@@ -2,6 +2,11 @@
 
 This repo contains 2 scripts to extract information from X4 Foundations. The one you want to use is the savefile miner: `x4-save-miner.py`, the second script `x4-cat-miner.py` is for extracting data from the game files for use with the save miner.
 
+The only requirement besides the standard python libraries is lxml
+```
+pip3 install lxml
+```
+
 ## x4-save-miner
 
 The `x4-save-miner.py` script is used to extract useful information from any save file.
