@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+
+from lxml import etree
+import gzip
+import sys
+import argparse
+from os import listdir
+from os.path import isfile, join
+import json
+import re
+import glob
+
+parser = argparse.ArgumentParser()
+parser.add_argument("x4folder", help="The location of your X4 installation")
+parser.add_argument("-l", "--langid", default="44", help="The language ID for names (default == 44 (English))")
+args = parser.parse_args()
+
+offsetFiles = [
+    "02.cat",
+    "06.cat",
+]
+
+nameFiles = [
+    "09.cat",
+]
+
+nameMappingFiles = [
+    "08.cat",
+]
+
+if len(sys.argv) < 2:
+    parser.print_usage()
+    sys.exit(1)
+
+def fetchXmlwithCat(x4dir, filename):
+    catfile = join(x4dir, filename)
+    datfile = catfile[0:-3] + "dat"
+    offset = 0
+    xmlfiles = []
+    print("Processing catfile: " + catfile)
+    with open(catfile, 'r') as cat:
+        for line in cat.readlines():
+            deets = line.rsplit(" ", 3)
+            if (len(deets) < 4):
+                print("Error: failed to parse catfile: " + line)
+                continue
+            if deets[0].endswith(".xml"):
+                with open(datfile, 'rb') as dat:
+                    dat.seek(offset)
+                    data = dat.read(int(deets[1])).decode('utf-8')
+                    xmlfiles += [{'name': deets[0], 'content': data}]
+                    print("Added: " + deets[0])
+            offset += int(deets[1])
+    return xmlfiles
+
+def processOffsets( xmlstrings ):
+    offsets = {}
+    count = 0
+    for rawxml in xmlstrings:
+        count += 1
+        try:
+            print("Checking for offset data in: " + rawxml['name'])
+            root = etree.fromstring(bytes(rawxml['content'], encoding='utf8'))
+            connections = root.findall(".//connection[@ref='zones']")
+            for conn in connections:
+                position = {'x':0.0, 'y':0.0, 'z':0.0, 'pitch':0.0, 'roll':0.0, 'yaw':0.0}
+                conn_has_offset = False
+                objpos = conn.find("./offset/position")
+                objrot = conn.find("./offset/rotation")
+                if objpos != None:
+                    conn_has_offset = True
+                    position['x'] += float(objpos.get('x')) if 'x' in objpos.attrib else 0.0
+                    position['y'] += float(objpos.get('y')) if 'y' in objpos.attrib else 0.0
+                    position['z'] += float(objpos.get('z')) if 'z' in objpos.attrib else 0.0
+                if objrot != None:
+                    conn_has_offset = True
+                    position['pitch'] += float(objrot.get('pitch')) if 'pitch' in objrot.attrib else 0.0
+                    position['roll'] += float(objrot.get('roll')) if 'roll' in objrot.attrib else 0.0
+                    position['yaw'] += float(objrot.get('yaw')) if 'yaw' in objrot.attrib else 0.0
+                if conn_has_offset:
+                    macro = conn.find("./macro")
+                    if macro != None:
+                        name = macro.get('ref')
+                        if name != None:
+                            offsets[ name.lower() ] = position
+                            continue
+                    print("Warning: Found offset with zone reference: " + conn)
+        except:
+            print("Warning: Failed to parse xmldoc #" + str(count) + ": " + rawxml['name'])
+    return offsets
+
+def fetchNames( xmlstrings, langid ):
+    names = {}
+    count = 0
+    for rawxml in xmlstrings:
+        count +=1
+        print("Checking for name-mappings data in: " + rawxml['name'])
+        root = etree.fromstring(bytes(rawxml['content'], encoding='utf8'))
+        xmlid = root.get('id')
+        if xmlid != langid:
+            xmlid = "none" if xmlid == None else xmlid
+            print("Skipping language: " + xmlid)
+            continue
+        for page in root.findall(".//page"):
+            pid = page.get('id')
+            if pid != None:
+                names[pid] = {}
+                for t in page.findall('./t'):
+                    tid = t.get('id')
+                    if tid != None:
+                        name = re.sub(r".*\(([^)]*).*", r"\1", t.text)
+                        names[pid][tid] = name
+    return names
+
+def nameSectors( xmlstrings, names):
+    sectorNames = {}
+    count = 0
+    for rawxml in xmlstrings:
+        count +=1
+        print("Checking for sector naming data in: " + rawxml['name'])
+        root = etree.fromstring(bytes(rawxml['content'], encoding='utf8'))
+        sectors = root.findall(".//dataset")
+        for sector in sectors:
+            name = sector.get('macro')
+            if name != None:
+                id = sector.find('.//properties/identification')
+                if id != None:
+                    idref = id.get('name')
+                    if idref != None:
+                        page = idref.split(',')[0][1:]
+                        entry = idref.split(',')[1][:-1]
+                        if page in names:
+                            if entry in names[page]:
+                                sectorNames[name.lower()] = names[page][entry]
+                                continue
+                        print("Warning: Failed to find name entry for: " + str(name) + ", page: " + page + ", entry: " + entry)
+                else:
+                    print("Warning: Found dataset without identification: " + str(name))
+    return sectorNames
+
+offsets = {}
+names = {}
+sectorNames = {}
+
+offsetFiles += glob.glob(args.x4folder + "/extensions/*/*0[123].cat")
+nameFiles += glob.glob(args.x4folder + "/extensions/*/*0[123].cat")
+nameMappingFiles += glob.glob(args.x4folder + "/extensions/*/*0[123].cat")
+
+for file in offsetFiles:
+    xmlstrings = fetchXmlwithCat(args.x4folder, file)
+    offsets.update(processOffsets( xmlstrings ))
+
+for file in nameFiles:
+   xmlstrings = fetchXmlwithCat(args.x4folder, file)
+   names.update( fetchNames(xmlstrings, args.langid ))
+
+for file in nameMappingFiles:
+   xmlstrings = fetchXmlwithCat(args.x4folder, file)
+   sectorNames.update( nameSectors(xmlstrings, names ))
+
+with open("x4-offsets.json", "w") as jsonfile:
+    jsonfile.write( json.dumps(offsets, indent=3) )
+
+with open("x4-names.json", "w") as jsonfile:
+    jsonfile.write( json.dumps(sectorNames, indent=3) )

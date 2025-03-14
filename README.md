@@ -1,0 +1,166 @@
+# X4 Information Miner
+
+This repo contains 2 scripts to extract information from X4 Foundations. The one you want to use is the savefile miner: `x4-save-miner.py`, the second script `x4-cat-miner.py` is for extracting data from the game files for use with the save miner.
+
+## x4-save-miner
+
+The `x4-save-miner.py` script is used to extract useful information from any save file.
+
+Usage:
+```
+usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-q] [-i] savefile
+
+positional arguments:
+  savefile           The savegame you want to analyse
+
+options:
+  -h, --help         show this help message and exit
+  -o, --ownerless    Display ownerless ship locations
+  -l, --lockboxes    Display lockbox locations
+  -d, --datavaults   Display Data Vault locations
+  -e, --erlking      Display Erlking Data Vault locations
+  -q, --quiet        Suppress warnings in interactive mode
+  -i, --interactive  Starts a python shell to interact with the XML data (read-only)
+```
+
+The savefile can be compressed or uncompressed. It is the importing of the data that takes most of the time, once imported accessing the data is fast. 
+
+The flags are not mutually exclusive, you can use them all together. eg:
+
+```
+$ ./x4-save-miner.py ~/.config/EgoSoft/X4/11524914/save/quicksave.xml.gz  -olde
+```
+
+The output should be quite informative. As an example, here's my Erlking Vault data:
+
+```
+$ ./x4-save-miner.py -e ~/.config/EgoSoft/X4/11524914/save/quicksave.xml.gz 
+
+Erlking Vaults
+===============
+Vault: ZZL-662, Known2Player: True
+  Sector: Avarice I (GIX-981)
+  Location: {'x': -22100, 'y': -5674, 'z': 131278, 'pitch': 0, 'roll': 0, 'yaw': -113}
+  Wares:
+
+Vault: CTY-692, Known2Player: True
+  Sector: Avarice I (GIX-981)
+  Location: {'x': -180027, 'y': -36605, 'z': -294587, 'pitch': 0, 'roll': 0, 'yaw': 0}
+  Wares:
+
+Vault: ZFN-855, Known2Player: True
+  Sector: Windfall III The Hoard (EXA-561)
+  Location: {'x': -233300, 'y': 23136, 'z': -44598, 'pitch': 0, 'roll': 0, 'yaw': 0}
+  Wares:
+    inv_decryptionmodule: 4
+    inv_seminar_piloting_0: 2
+    Blueprint: weapon_pir_xl_battleship_01_mk1
+    Credits: 15766600
+
+Vault: PQD-875, Known2Player: True
+  Sector: Windfall IV Aurora's Dream (AWK-124)
+  Location: {'x': -229999, 'y': 4159, 'z': -55641, 'pitch': 0, 'roll': 0, 'yaw': 55}
+  Wares:
+
+Vault: FXI-254, Known2Player: True
+  Sector: Windfall IV Aurora's Dream (AWK-124)
+  Location: {'x': -73950, 'y': -5823, 'z': 276225, 'pitch': 0, 'roll': 0, 'yaw': 0}
+  Wares:
+    inv_hallucinogenics: 1
+    inv_decryptionmodule: 2
+    inv_advancedtargetingmodule: 3
+    modpart_shieldgeneratorcoil_t1: 1
+    Blueprint: shield_pir_xl_battleship_01_standard_01_mk1
+    Credits: 12328300
+
+```
+As you can see, I have opened three vaults and the remaining two still have wares and blueprints inside.
+
+### Interactive Mode
+You can also poke around inside your save file by starting the script in interactive mode. In this mode, python will parse the save file into an `lxml.etree` structure and then drop you into an interactive interpretter.
+
+```
+$ ./x4-save-miner.py -i ~/.config/EgoSoft/X4/11524914/save/quicksave.xml.gz
+
+Python Shell starting...
+
+Available Functions: 
+
+  getShip('code')           # Fetch information about a specific ship
+  getStation('code')        # Fetch information about a specific station
+  getObject('code')         # Fetch information about any object with a code
+  getSector('code')         # Fetch information about a specific sector
+  getSectorObjects('code')  # Fetch stations and ships currently inside the given sector
+  printXML('code')          # Print the XML for a resource and its children
+  getDupes('code')          # Fetch all duplicates or those with provided code
+  dumpDupes('code')         # Print all duplicates or those with provided code
+
+Fetch interesting (special) resources
+
+  update[Ownerless|LockBoxes|DataVaults|ErlkingVaults]() # Update locations for these objects
+  print[Ownerless|LockBoxes|DataVaults|ErlkingVaults]()  # Print these objects information
+
+  Eg. Display the ownerless ship locations:
+
+  >>> updateOwnerless()
+  >>> printOwnerless()
+
+Or you know, just use python. The root of the xml tree is in var `root`. Other vars include:
+lists:      sectors duplicates warnings allComponents allStations allShips freeShips
+            xenonShips khaakShips dataVaults erlkingVaults lockboxes flotsam other
+dicts:      sectorNames sectorCodes shipCodes stationCodes vaultCodes lockboxCodes allCodes
+            ignoredConnections, sector_zone_offsets, sector_macros
+
+
+  >>> print(json.dumps(dict(phq.attrib), indent=6)) 
+
+Python 3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+(InteractiveConsole)
+>>> 
+```
+
+### Duplicate codes
+
+You probably thought that those station and ship codes were unique. Well that's not necessarily the case, I have many duplicates in some of my save games and you may have too. This wont cause an issue when printing data using one of the flags [`-o`,`-l`,`-d`,`-e`], but it is something to bear in mind if you go poking around in interactive mode. The functions should warn you if you request data which has a duplicate though. 
+
+```
+$ ./x4-save-miner.py -i ~/.config/EgoSoft/X4/11524914/save/quicksave.xml.gz 
+
+Python Shell starting...
+
+WARNING: Duplicate code found for: NMQ-431
+WARNING: Duplicate code found for: XYT-702
+WARNING: WARNING: Duplicate is another SHIP. Two or more ships have the same code: XYT-702
+WARNING: Duplicate code found for: KSR-468
+WARNING: Duplicate code found for: YRS-090
+... SNIP ...
+```
+
+These dupes are not a problem for the game, because each object also as an `id` which is unique and I'm sure that's how the resources get managed by the game engine.
+
+## x4-cat-miner
+
+The `x4-cat-miner.py` script is used to extract offset information from zones/regions from the CAT/DAT files shipped with game. This information is necessary in order to be able to locate objects in space using co-ordinates from the centre of any sector. It also parses the language files to map the identification codes to their languages.
+
+You do not need to run this unless Egosoft releases a new DLC or you want to change the language in the other scripts output (the files in this repo are configured for English).
+
+Usage:
+```
+usage: x4-cat-miner.py [-h] [-l LANGID] x4folder
+
+positional arguments:
+  x4folder              The location of your X4 installation
+
+options:
+  -h, --help            show this help message and exit
+  -l LANGID, --langid LANGID
+                        The language ID for names (default == 44 (English))
+```
+
+The langid is the language id for the name mappings. The default is `44` which I think is UK English.
+
+It will generate two json files `x4-names.json` which maps the cluster/sector/zone macros to their system names, and `x4-offsets.json` which maps the macros to their three dimensional offsets. Both of these files will then be used by the `x4-save-miner` script to provide useful information from your save files.
+
+
+
