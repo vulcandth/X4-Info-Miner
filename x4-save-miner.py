@@ -329,6 +329,7 @@ def updateAll():
     updateOwnerless()
     updateLockboxes()
     updateDataVaults()
+    updateErlkingVaults()
 
 def updateOwnerless():
     for ship in freeShips:
