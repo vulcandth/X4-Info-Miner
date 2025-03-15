@@ -9,37 +9,114 @@ pip3 install lxml
 
 ## x4-save-miner
 
-The `x4-save-miner.py` script is used to extract useful information from any save file.
+The `x4-save-miner.py` script is used to extract useful information from any save file. By default it runs at a low information level and only reveals the sector information, running at higher info levels reveals more "spoilers". The choice is yours.
 
 Usage:
 ```
-usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-q] [-i] savefile
+usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-q] [-i INFO] [-s] savefile
 
 positional arguments:
-  savefile           The savegame you want to analyse
+  savefile              The savegame you want to analyse
 
 options:
-  -h, --help         show this help message and exit
-  -o, --ownerless    Display ownerless ship locations
-  -l, --lockboxes    Display lockbox locations
-  -d, --datavaults   Display Data Vault locations
-  -e, --erlking      Display Erlking Data Vault locations
-  -q, --quiet        Suppress warnings in interactive mode
-  -i, --interactive  Starts a python shell to interact with the XML data (read-only)
+  -h, --help            show this help message and exit
+  -o, --ownerless       Display ownerless ship locations
+  -l, --lockboxes       Display lockbox locations
+  -d, --datavaults      Display Data Vault locations
+  -e, --erlking         Display Erlking Data Vault locations
+  -q, --quiet           Suppress warnings in interactive mode
+  -i INFO, --info INFO  information level [1-3]. Default is 1 (sector only)
+  -s, --shell           Starts a python shell to interract with the XML data (read-only)
 ```
 
-The savefile can be compressed or uncompressed. It is the importing of the data that takes most of the time, once imported accessing the data is fast. 
+The savefile can be compressed or uncompressed. It is the importing of the data that takes most of the time, once imported accessing the data is fast.
 
 The flags are not mutually exclusive, you can use them all together. eg:
 
 ```
-$ ./x4-save-miner.py ~/.config/EgoSoft/X4/11524914/save/quicksave.xml.gz  -olde
+$ ./x4-save-miner.py ~/.config/EgoSoft/X4/11524914/save/quicksave.xml.gz -olde -i2
 ```
 
-The output should be quite informative. As an example, here's my Erlking Vault data:
+The amount of information displayed depends on the `-i`,`--info` setting. At level `1` it will display only the sector in which the object resides, level `2` will also show the position within the sector, and level `3` will show you the components on board. 
+
+For example, getting the ownerless ships at level `1` (the default) returns information like:
+```
+$ ./x4-save-miner.py ~/.config/EgoSoft/X4/11524914/save/quicksave.xml.gz -o
+
+Ship: IKP-411, Class: ship_l, Macro: ship_par_l_destroyer_01_a_macro
+  SpawnTime: 0
+  Sector: Faulty Logic VII (XXL-865)
+```
+
+Running at level `2` would return:
+```
+$ ./x4-save-miner.py ~/.config/EgoSoft/X4/11524914/save/quicksave.xml.gz -o -i2
+
+Ship: IKP-411, Class: ship_l, Macro: ship_par_l_destroyer_01_a_macro
+  SpawnTime: 0
+  Sector: Faulty Logic VII (XXL-865)
+  Location: {'x': -165396, 'y': -489, 'z': 145876, 'pitch': 0, 'roll': 30, 'yaw': -111}
+```
+
+And at level `3` it would return:
+```
+$ ./x4-save-miner.py ~/.config/EgoSoft/X4/11524914/save/quicksave.xml.gz -o -i3
+
+Ship: IKP-411, Class: ship_l, Macro: ship_par_l_destroyer_01_a_macro
+  SpawnTime: 0
+  Sector: Faulty Logic VII (XXL-865)
+  Location: {'x': -165396, 'y': -489, 'z': 145876, 'pitch': 0, 'roll': 30, 'yaw': -111}
+
+  Engines:
+    engine_par_l_travel_01_mk1_macro
+    engine_par_l_travel_01_mk1_macro
+    engine_par_l_travel_01_mk1_macro
+  Shields:
+    shield_par_m_standard_02_mk1_macro
+    shield_par_m_standard_02_mk1_macro
+    shield_par_m_standard_02_mk1_macro
+    shield_par_m_standard_02_mk1_macro
+    shield_par_m_standard_02_mk1_macro
+    shield_par_m_standard_02_mk1_macro
+    shield_par_m_standard_02_mk1_macro
+    shield_par_m_standard_02_mk1_macro
+    shield_par_m_standard_02_mk1_macro
+    shield_par_m_standard_02_mk1_macro
+    shield_par_l_standard_01_mk1_macro
+    shield_par_l_standard_01_mk1_macro
+  Weapons:
+    weapon_par_l_destroyer_01_mk1_macro
+    weapon_par_l_destroyer_01_mk1_macro
+  Turrets:
+    turret_par_m_gatling_02_mk1_macro
+    turret_par_m_gatling_02_mk1_macro
+    turret_par_m_gatling_02_mk1_macro
+    turret_par_m_gatling_02_mk1_macro
+    turret_par_m_gatling_02_mk1_macro
+    turret_par_m_laser_02_mk1_macro
+    turret_par_l_laser_01_mk1_macro
+    turret_par_l_laser_01_mk1_macro
+    turret_par_l_laser_01_mk1_macro
+  Software:
+    software_dockmk2
+    software_scannerobjectmk2
+    software_trademk1
+  Consumables:
+    weapon_gen_mine_02_macro: 19
+    ship_gen_xs_repairdrone_01_a_macro: 3
+    ship_gen_xs_lasertower_01_a_macro: 19
+    ship_gen_s_fightingdrone_01_a_macro: 1
+    weapon_gen_mine_03_macro: 17
+    weapon_gen_mine_01_macro: 45
+    countermeasure_flares_01_macro: 10
+    ship_gen_s_lasertower_01_a_macro: 17
 
 ```
-$ ./x4-save-miner.py -e ~/.config/EgoSoft/X4/11524914/save/quicksave.xml.gz 
+
+An example of Erlking Data Vaults:
+
+```
+$ ./x4-save-miner.py -e ~/.config/EgoSoft/X4/11524914/save/quicksave.xml.gz -i3
 
 Erlking Vaults
 ===============
@@ -82,10 +159,10 @@ Vault: FXI-254, Known2Player: True
 As you can see, I have opened three vaults and the remaining two still have wares and blueprints inside.
 
 ### Interactive Mode
-You can also poke around inside your save file by starting the script in interactive mode. In this mode, python will parse the save file into an `lxml.etree` structure and then drop you into an interactive interpretter.
+You can also poke around inside your save file by starting the script in interactive mode. In this mode, python will parse the save file into an `lxml.etree` structure and then drop you into an interactive interpreter.
 
 ```
-$ ./x4-save-miner.py -i ~/.config/EgoSoft/X4/11524914/save/quicksave.xml.gz
+$ ./x4-save-miner.py -s ~/.config/EgoSoft/X4/11524914/save/quicksave.xml.gz
 
 Python Shell starting...
 
@@ -116,8 +193,10 @@ lists:      sectors duplicates warnings allComponents allStations allShips freeS
 dicts:      sectorNames sectorCodes shipCodes stationCodes vaultCodes lockboxCodes allCodes
             ignoredConnections, sector_zone_offsets, sector_macros
 
+Examples:
 
   >>> print(json.dumps(dict(phq.attrib), indent=6)) 
+  >>> printShip(getShip('ULC-584'),3)
 
 Python 3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0] on linux
 Type "help", "copyright", "credits" or "license" for more information.
@@ -130,7 +209,7 @@ Type "help", "copyright", "credits" or "license" for more information.
 You probably thought that those station and ship codes were unique. Well that's not necessarily the case, I have many duplicates in some of my save games and you may have too. This wont cause an issue when printing data using one of the flags [`-o`,`-l`,`-d`,`-e`], but it is something to bear in mind if you go poking around in interactive mode. The functions should warn you if you request data which has a duplicate though. 
 
 ```
-$ ./x4-save-miner.py -i ~/.config/EgoSoft/X4/11524914/save/quicksave.xml.gz 
+$ ./x4-save-miner.py -s ~/.config/EgoSoft/X4/11524914/save/quicksave.xml.gz 
 
 Python Shell starting...
 

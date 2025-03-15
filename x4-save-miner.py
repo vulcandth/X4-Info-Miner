@@ -16,7 +16,8 @@ parser.add_argument("-l", "--lockboxes", help="Display lockbox locations", actio
 parser.add_argument("-d", "--datavaults", help="Display Data Vault locations", action="store_true")
 parser.add_argument("-e", "--erlking", help="Display Erlking Data Vault locations", action="store_true")
 parser.add_argument("-q", "--quiet", help="Suppress warnings in interactive mode", action="store_true")
-parser.add_argument("-i", "--interactive", help="Starts a python shell to interract with the XML data (read-only)", action="store_true")
+parser.add_argument("-i", "--info", help="information level [1-3]. Default is 1 (sector only)", default='1')
+parser.add_argument("-s", "--shell", help="Starts a python shell to interract with the XML data (read-only)", action="store_true")
 args = parser.parse_args()
 
 sectors = []
@@ -234,28 +235,70 @@ def getPosition(obj, position=None):
         return position
     return getPosition( obj.getparent(), position )
 
-def printLbDv(resources, title):
+def printLbDv(resources, title, level=1):
     for resource in resources:
         sectorName = resource.get('sector_name') if ( resource.get('sector_name') != None ) else ""
         known2Player = 'True' if resource.get('knownto') == 'player' else 'False'
         wares = resource.findall(".//ware")
         blueprints = resource.findall(".//component[@class='collectableblueprints']")
         cwares = resource.findall(".//component[@class='collectablewares']")
-        print(title + ": " + resource.get('code') + ", Known2Player: " + known2Player + 
-              "\n  Sector: " + sectorName + " (" + resource.get('sector_code') + ")" + 
-              "\n  Location: " + resource.get('location') + "\n  Wares:")
-        for ware in wares:
-            amount = ware.get('amount') if 'amount' in ware.attrib else '1'
-            print("    " + ware.get('ware') + ": " + amount )
-        for bp in blueprints:
-            print("    Blueprint: " + bp.get('blueprints') )
-        for cash in cwares:
-            amount = cash.get('money')
-            if amount:
-                print("    Credits: " + amount )
-            else:
-                print("     Collectable Ware: " + cash.attrib )
+        print("\n" + title + ": " + resource.get('code') + ", Known2Player: " + known2Player + 
+              "\n  Sector: " + sectorName + " (" + resource.get('sector_code') + ")")
+        if int(level) > 1:
+              print("  Location: " + resource.get('location') )
+        if int(level) > 2:
+            print("  Wares:")
+            for ware in wares:
+                amount = ware.get('amount') if 'amount' in ware.attrib else '1'
+                print("    " + ware.get('ware') + ": " + amount )
+            for bp in blueprints:
+                print("    Blueprint: " + bp.get('blueprints') )
+            for cash in cwares:
+                amount = cash.get('money')
+                if amount:
+                    print("    Credits: " + amount )
+                else:
+                    print("     Collectable Ware: " + cash.attrib )
         print("")
+
+def printShip(ship, level=1):
+    sectorName = ship.get('sector_name') if ( ship.get('sector_name') != None ) else ""
+    print("\nShip: " + ship.get('code') + ", Class: " + ship.get('class') + ", Macro: " + ship.get('macro') + 
+            "\n  SpawnTime: " + ship.get('spawntime') + "\n  Sector: " + sectorName + " (" + ship.get('sector_code') + ")")
+    if int(level) > 1:
+        print("  Location: " + ship.get('location') + "\n")
+    if int(level) >2:
+        engines = ship.findall("./connections/connection/component[@class='engine']")
+        shields = ship.findall("./connections/connection/component[@class='shieldgenerator']")
+        weapons = ship.findall("./connections/connection/component[@class='weapon']")
+        turrets = ship.findall("./connections/connection/component[@class='turret']")
+        software = ship.find("./software")
+        consumables = ship.findall(".//ammunition/available/item")
+        if engines != None:
+            print("  Engines:")
+            for engine in engines:
+                print("    " + engine.get('macro'))
+        if shields != None:
+            print("  Shields:")
+            for shield in shields:
+                print("    " + shield.get('macro'))
+        if weapons != None:
+            print("  Weapons:")
+            for weapon in weapons:
+                print("    " + weapon.get('macro'))
+        if turrets != None:
+            print("  Turrets:")
+            for turret in turrets:
+                print("    " + turret.get('macro'))
+        if software != None:
+            print("  Software:")
+            for sw in software.get('wares').split(" "):
+                print("    " + sw)
+        if consumables != None:
+            print("  Consumables:")
+            for cons in consumables:
+                print("    " + cons.get('macro') + ": " + cons.get('amount'))
+    print("")
 
 def printXML(code):
     if type(code) is str: 
@@ -296,11 +339,7 @@ def printOwnerless():
     print("Ownerless Ships")
     print("===============")
     for ship in freeShips:
-        sectorName = ship.get('sector_name') if ( ship.get('sector_name') != None ) else ""
-        print("Ship: " + ship.get('code') + ", Class: " + ship.get('class') + ", Macro: " + ship.get('macro') + 
-              "\n  SpawnTime: " + ship.get('spawntime') + "\n  Sector: " + sectorName + " (" + ship.get('sector_code') + ")" + 
-              "\n  Location: " + ship.get('location') + "\n")
-    print("")
+        printShip(ship, args.info)
 
 def updateLockboxes():
     for lb in lockboxes:
@@ -310,7 +349,7 @@ def printLockboxes():
     print("")
     print("Lock Boxes")
     print("===============")
-    printLbDv(lockboxes, "Lockbox")
+    printLbDv(lockboxes, "Lockbox", args.info)
 
 def updateDataVaults():
     for vault in dataVaults:
@@ -324,13 +363,16 @@ def printDataVaults():
     print("")
     print("Data Vaults")
     print("===============")
-    printLbDv(dataVaults, "Vault")
+    printLbDv(dataVaults, "Vault", args.info)
 
 def printErlkingVaults():
     print("")
     print("Erlking Vaults")
     print("===============")
-    printLbDv(erlkingVaults, "Vault")
+    printLbDv(erlkingVaults, "Vault", args.info)
+
+def setLevel(level):
+    args.info = level
 
 print("Processing XML...")
 start = time.time()
@@ -433,7 +475,7 @@ if args.erlking:
     updateErlkingVaults()
     printErlkingVaults()
 
-if args.interactive:
+if args.shell:
     print("")
     print("Python Shell starting...")
     print("")
@@ -454,6 +496,7 @@ if args.interactive:
     print("")
     print("Fetch interesting (special) resources")
     print("")
+    print("  setLevel(int)                                          # Set information level for print functions")
     print("  update[Ownerless|LockBoxes|DataVaults|ErlkingVaults]() # Update locations for these objects")
     print("  print[Ownerless|LockBoxes|DataVaults|ErlkingVaults]()  # Print these objects information")
     print("")
@@ -468,8 +511,10 @@ if args.interactive:
     print("dicts:      sectorNames sectorCodes shipCodes stationCodes vaultCodes lockboxCodes allCodes")
     print("            ignoredConnections sector_zone_offsets sector_macros")
     print("")
+    print("Examples")
     print("")
     print("  >>> print(json.dumps(dict(phq.attrib), indent=6)) ")
+    print("  >>> printShip(getShip('ULC-584'),3)")
     print("")
     code.interact(local=locals())
 
