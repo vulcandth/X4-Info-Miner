@@ -33,6 +33,7 @@ import code
 import json
 import re
 import time
+import math
 
 parser = argparse.ArgumentParser()
 parser.add_argument("savefile", help="The savegame you want to analyse")
@@ -40,6 +41,7 @@ parser.add_argument("-o", "--ownerless", help="Display ownerless ship locations"
 parser.add_argument("-l", "--lockboxes", help="Display lockbox locations", action="store_true")
 parser.add_argument("-d", "--datavaults", help="Display Data Vault locations", action="store_true")
 parser.add_argument("-e", "--erlking", help="Display Erlking Data Vault locations", action="store_true")
+parser.add_argument("-p", "--proximity", help="Display The proximity to the closest station", action="store_true")
 parser.add_argument("-q", "--quiet", help="Suppress warnings in interactive mode", action="store_true")
 parser.add_argument("-i", "--info", help="information level [1-3]. Default is 1 (sector only)", default='1')
 parser.add_argument("-s", "--shell", help="Starts a python shell to interract with the XML data (read-only)", action="store_true")
@@ -176,7 +178,6 @@ def getStation(code):
                 return station
         print("FAILED: Station Not found. Check your speeling ;-)")
         
-
 def getSectorObjects(code):
     if code in sectorNames:
         code = sectorNames[code].get('code')
@@ -194,7 +195,40 @@ def getSectorObjects(code):
         if floater.get('sector_code') == code:
             sectorObjects['flotsam'] += [floater]
     return sectorObjects
-            
+
+def getProximity(obj):
+    closest = None
+    distance = 9999999
+    infos = []
+    if type(obj) is str:
+        obj = getObject(code)
+    sectorCode = obj.get('sector_code')
+    sectorObjects = getSectorObjects(sectorCode)
+    oLocation = getPosition(obj)
+    for station in sectorObjects['stations']:
+        sLocation = getPosition(station)
+        sdist = math.sqrt(math.pow(sLocation['x'] - oLocation['x'],2) + math.pow(sLocation['z'] - oLocation['z'],2))
+        if closest == None or sdist < distance:
+            closest = station.get('code')
+            distance = sdist
+            infos = [ "The closest station is: " + closest + ", distance: " + str(int(sdist/1000)) + " km" ]
+            xd = oLocation['x'] - sLocation['x']
+            yd = oLocation['y'] - sLocation['y']
+            zd = oLocation['z'] - sLocation['z']
+            if xd > sLocation['x']:
+                infos += [ "Target is " + str(int(abs(xd/1000))) + " km to the east (X Axis)" ]
+            else:
+                infos += [ "Target is " + str(int(abs(xd/1000))) + " km to the west (X Axis)" ]
+            if zd > sLocation['z']:
+                infos += [ "Target is " + str(int(abs(zd/1000))) + " km to the north (Z Axis)" ]
+            else:
+                infos += [ "Target is " + str(int(abs(zd/1000))) + " km to the south (Z Axis)" ]
+            if yd > sLocation['y']: #+y up
+                infos += [ "Target is " + str(int(abs(yd/1000))) + " km above (Y Axis)" ]
+            else:
+                infos += [ "Target is " + str(int(abs(yd/1000))) + " km below (Y Axis)" ]
+    return infos
+
 def getPP(code):
     search = allStations + allShips + dataVaults
     for resource in search:
@@ -264,13 +298,17 @@ def printLbDv(resources, title, level=1):
     for resource in resources:
         sectorName = resource.get('sector_name') if ( resource.get('sector_name') != None ) else ""
         known2Player = 'True' if resource.get('knownto') == 'player' else 'False'
+        proximity = json.loads(resource.get('proximity'))
         wares = resource.findall(".//ware")
         blueprints = resource.findall(".//component[@class='collectableblueprints']")
         cwares = resource.findall(".//component[@class='collectablewares']")
         print("\n" + title + ": " + resource.get('code') + ", Known2Player: " + known2Player + 
               "\n  Sector: " + sectorName + " (" + resource.get('sector_code') + ")")
-        if int(level) > 1:
-              print("  Location: " + resource.get('location') )
+        if int(level) > 1 or proximity != None:
+            print("  Location: " + resource.get('location') + "\n")
+        if proximity:
+            for info in proximity:
+                print("           " + info )
         if int(level) > 2:
             print("  Wares:")
             for ware in wares:
@@ -288,10 +326,14 @@ def printLbDv(resources, title, level=1):
 
 def printShip(ship, level=1):
     sectorName = ship.get('sector_name') if ( ship.get('sector_name') != None ) else ""
+    proximity = json.loads(ship.get('proximity'))
     print("\nShip: " + ship.get('code') + ", Class: " + ship.get('class') + ", Macro: " + ship.get('macro') + 
             "\n  SpawnTime: " + ship.get('spawntime') + "\n  Sector: " + sectorName + " (" + ship.get('sector_code') + ")")
-    if int(level) > 1:
+    if int(level) > 1 or proximity != None:
         print("  Location: " + ship.get('location') + "\n")
+    if proximity:
+        for info in proximity:
+            print("           " + info )
     if int(level) >2:
         engines = ship.findall("./connections/connection/component[@class='engine']")
         shields = ship.findall("./connections/connection/component[@class='shieldgenerator']")
@@ -350,15 +392,17 @@ def dumpDupes(code=None):
     for dupe in dupes:
         print(dupe.attrib)
 
-def updateAll():
-    updateOwnerless()
-    updateLockboxes()
-    updateDataVaults()
-    updateErlkingVaults()
+def updateAll(proximity=False):
+    updateOwnerless(proximity)
+    updateLockboxes(proximity)
+    updateDataVaults(proximity)
+    updateErlkingVaults(proximity)
 
-def updateOwnerless():
+def updateOwnerless(proximity=False):
     for ship in freeShips:
-        ship.set('location', str(getPosition(ship)))
+        ship.set('location', json.dumps(getPosition(ship)))
+        if proximity:
+            ship.set('proximity', json.dumps(getProximity(ship)))
 
 def printOwnerless():
     print("")
@@ -367,9 +411,11 @@ def printOwnerless():
     for ship in freeShips:
         printShip(ship, args.info)
 
-def updateLockboxes():
+def updateLockboxes(proximity=False):
     for lb in lockboxes:
         lb.set('location', str(getPosition(lb)))
+        if proximity:
+            lb.set('proximity', json.dumps(getProximity(lb)))
 
 def printLockboxes():
     print("")
@@ -377,13 +423,17 @@ def printLockboxes():
     print("===============")
     printLbDv(lockboxes, "Lockbox", args.info)
 
-def updateDataVaults():
+def updateDataVaults(proximity=False):
     for vault in dataVaults:
         vault.set('location', str(getPosition(vault)))
+        if proximity:
+            vault.set('proximity', json.dumps(getProximity(vault)))
 
-def updateErlkingVaults():
+def updateErlkingVaults(proximity=False):
     for vault in erlkingVaults:
         vault.set('location', str(getPosition(vault)))
+        if proximity:
+            vault.set('proximity', json.dumps(getProximity(vault)))
 
 def printDataVaults():
     print("")
@@ -486,19 +536,19 @@ print('Done. Time: %.2f' % (time.time() - start))
 
 
 if args.ownerless:
-    updateOwnerless()
+    updateOwnerless(args.proximity)
     printOwnerless()
 
 if args.lockboxes:
-    updateLockboxes()
+    updateLockboxes(args.proximity)
     printLockboxes()
         
 if args.datavaults:
-    updateDataVaults()
+    updateDataVaults(args.proximity)
     printDataVaults()
 
 if args.erlking:
-    updateErlkingVaults()
+    updateErlkingVaults(args.proximity)
     printErlkingVaults()
 
 if args.shell:
