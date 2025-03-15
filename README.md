@@ -24,6 +24,7 @@ options:
   -l, --lockboxes       Display lockbox locations
   -d, --datavaults      Display Data Vault locations
   -e, --erlking         Display Erlking Data Vault locations
+  -p, --proximity       Display The proximity to the closest station
   -q, --quiet           Suppress warnings in interactive mode
   -i INFO, --info INFO  information level [1-3]. Default is 1 (sector only)
   -s, --shell           Starts a python shell to interract with the XML data (read-only)
@@ -111,6 +112,20 @@ Ship: IKP-411, Class: ship_l, Macro: ship_par_l_destroyer_01_a_macro
     countermeasure_flares_01_macro: 10
     ship_gen_s_lasertower_01_a_macro: 17
 
+```
+
+You can also pass `-p` to get the proximity to the closest station in the sector. Using `-p` will (obviously?) provide information at level: 2.
+
+```
+Ship: ULC-584, Class: ship_s, Macro: ship_xen_s_heavyfighter_01_a_macro
+  SpawnTime: 0
+  Sector: Nopileos' Fortune II (DOR-191)
+  Location: {"x": -60000, "y": -15000, "z": 115000, "pitch": 0, "roll": 6, "yaw": -54}
+
+           The closest station is: FGW-476, distance: 223 km
+           Target is 168 km to the west (X Axis)
+           Target is 146 km to the north (Z Axis)
+           Target is 12 km below (Y Axis)
 ```
 
 An example of Erlking Data Vaults:
