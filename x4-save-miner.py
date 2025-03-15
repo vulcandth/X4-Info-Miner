@@ -7,6 +7,7 @@ import argparse
 import code
 import json
 import re
+import time
 
 parser = argparse.ArgumentParser()
 parser.add_argument("savefile", help="The savegame you want to analyse")
@@ -44,12 +45,13 @@ sector_zone_offsets = {}
 sector_macros = {}
 phq = None
 
-
 if len(sys.argv) < 3:
     parser.print_usage()
     print("\nPlease provide at least 1 argument along with the save file\nUse --help for full help\n")
     sys.exit(1)
-    
+
+print("Loading Savefile....")
+start = time.time()
 rawxml = None
 if args.savefile.endswith(".gz"):
     with gzip.open(args.savefile, 'rb') as f:
@@ -57,6 +59,7 @@ if args.savefile.endswith(".gz"):
 else:
     with open(args.savefile, 'rb') as f:
         rawxml = f.read()
+print('Done. Time: %.2f' % (time.time() - start))
 
 if rawxml is None:
     print("ERROR - Failed to parse savefile")
@@ -71,8 +74,24 @@ with open("x4-names.json", "r") as jsonfile:
     input = jsonfile.read()
     sector_macros = json.loads(input)
 
-root = etree.fromstring(rawxml)
-sectors = root.findall(".//universe/component/connections/connection/component/connections/connection/component[@class='sector']")
+# Create a custom parser with optimized settings
+def create_optimized_parser():
+    # Create a parser that's optimized for speed
+    parser = etree.XMLParser(
+        remove_blank_text=True,        # Removes blank text nodes
+        remove_comments=True,          # Ignores comments
+        remove_pis=True,               # Removes processing instructions
+        huge_tree=True,                # Allows larger trees
+        collect_ids=False,             # Don't collect XML IDs
+        resolve_entities=False         # Don't resolve entities
+    )
+    return parser
+OPTIMIZED_PARSER = create_optimized_parser()
+
+print("Parsing XML...")
+start = time.time()
+root = etree.fromstring(rawxml, parser=OPTIMIZED_PARSER)
+print('Done. Time: %.2f' % (time.time() - start))
 
 def getSector(code):
     if code in sectorCodes:
@@ -312,7 +331,10 @@ def printErlkingVaults():
     print("Erlking Vaults")
     print("===============")
     printLbDv(erlkingVaults, "Vault")
-        
+
+print("Processing XML...")
+start = time.time()
+sectors = root.findall(".//universe/component/connections/connection/component/connections/connection/component[@class='sector']")
 for sector in sectors:
     sectorMacro = sector.get('macro')
     sectorId = sector.get('id')
@@ -392,6 +414,8 @@ for sector in sectors:
                 ignoredConnections[connection] = ignoredConnections[connection] +1
             else:
                 ignoredConnections[connection] = 1
+print('Done. Time: %.2f' % (time.time() - start))
+
 
 if args.ownerless:
     updateOwnerless()
@@ -442,10 +466,10 @@ if args.interactive:
     print("lists:      sectors duplicates warnings allComponents allStations allShips freeShips")
     print("            xenonShips khaakShips dataVaults erlkingVaults lockboxes flotsam other")
     print("dicts:      sectorNames sectorCodes shipCodes stationCodes vaultCodes lockboxCodes allCodes")
-    print("            ignoredConnections, sector_zone_offsets, sector_macros")
+    print("            ignoredConnections sector_zone_offsets sector_macros")
     print("")
     print("")
     print("  >>> print(json.dumps(dict(phq.attrib), indent=6)) ")
     print("")
     code.interact(local=locals())
- 
+
