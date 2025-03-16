@@ -7,13 +7,19 @@ The only requirement besides the standard python libraries is lxml
 pip3 install lxml
 ```
 
+## Changes
+
+* 2025-03-16: Ver 1.0.1 - Added Proximity information
+* 2025-03-15: Ver 1.0.0 - Initial release
+
+
 ## x4-save-miner
 
 The `x4-save-miner.py` script is used to extract useful information from any save file. By default it runs at a low information level and only reveals the sector information, running at higher info levels reveals more "spoilers". The choice is yours.
 
 Usage:
 ```
-usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-q] [-i INFO] [-s] savefile
+usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-p] [-q] [-i INFO] [-s] savefile
 
 positional arguments:
   savefile              The savegame you want to analyse
@@ -38,7 +44,7 @@ The flags are not mutually exclusive, you can use them all together. eg:
 $ ./x4-save-miner.py ~/.config/EgoSoft/X4/11524914/save/quicksave.xml.gz -olde -i2
 ```
 
-The amount of information displayed depends on the `-i`,`--info` setting. At level `1` it will display only the sector in which the object resides, level `2` will also show the position within the sector, and level `3` will show you the components on board. 
+The amount of information displayed depends on the `-i`,`--info` setting. At level `1` it will display only the sector in which the object resides, level `2` will also show the position within the sector (x,y,z in meters), and level `3` will show you the components on board. 
 
 For example, getting the ownerless ships at level `1` (the default) returns information like:
 ```
@@ -114,19 +120,22 @@ Ship: IKP-411, Class: ship_l, Macro: ship_par_l_destroyer_01_a_macro
 
 ```
 
-You can also pass `-p` to get the proximity to the closest station in the sector. Using `-p` will (obviously?) provide information at level: 2.
+You can also pass `-p` to get the proximity to the closest station in the sector. Using `-p` will (obviously?) provide information at level: 2. 
+
+Here's an Erlking Vault example. The nearest station has code JSV-655, and the vault is 151 KM to the West (left) and 46 KM to the North (up) of that station. It's also 26 KM above the station. 
 
 ```
-Ship: ULC-584, Class: ship_s, Macro: ship_xen_s_heavyfighter_01_a_macro
-  SpawnTime: 0
-  Sector: Nopileos' Fortune II (DOR-191)
-  Location: {"x": -60000, "y": -15000, "z": 115000, "pitch": 0, "roll": 6, "yaw": -54}
+Vault: ZFN-855, Known2Player: True
+  Sector: Windfall III The Hoard (EXA-561)
+  Location: {'x': -233300, 'y': 23136, 'z': -44598, 'pitch': 0, 'roll': 0, 'yaw': 0}
 
-           The closest station is: FGW-476, distance: 223 km
-           Target is 168 km to the west (X Axis)
-           Target is 146 km to the north (Z Axis)
-           Target is 12 km below (Y Axis)
+            The closest station is: JSV-655, distance: 160 km
+            Target is 151 km to the west (X Axis)
+            Target is 46 km to the north (Z Axis)
+            Target is 26 km above (Y Axis)
+
 ```
+Note: The proximity is show in KM, the location (x,y,z) on the line above is in meters.
 
 An example of Erlking Data Vaults:
 

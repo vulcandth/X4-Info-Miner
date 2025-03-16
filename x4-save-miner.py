@@ -207,7 +207,7 @@ def getProximity(obj):
     oLocation = getPosition(obj)
     for station in sectorObjects['stations']:
         sLocation = getPosition(station)
-        sdist = math.sqrt(math.pow(sLocation['x'] - oLocation['x'],2) + math.pow(sLocation['z'] - oLocation['z'],2))
+        sdist = math.sqrt(math.pow(sLocation['x'] - oLocation['x'],2) + math.pow(sLocation['z'] - oLocation['z'],2) + math.pow(sLocation['y'] - oLocation['y'],2))
         if closest == None or sdist < distance:
             closest = station.get('code')
             distance = sdist
@@ -308,7 +308,7 @@ def printLbDv(resources, title, level=1):
             print("  Location: " + resource.get('location') + "\n")
         if proximity:
             for info in proximity:
-                print("           " + info )
+                print("            " + info )
         if int(level) > 2:
             print("  Wares:")
             for ware in wares:
@@ -333,7 +333,7 @@ def printShip(ship, level=1):
         print("  Location: " + ship.get('location') + "\n")
     if proximity:
         for info in proximity:
-            print("           " + info )
+            print("            " + info )
     if int(level) >2:
         engines = ship.findall("./connections/connection/component[@class='engine']")
         shields = ship.findall("./connections/connection/component[@class='shieldgenerator']")
