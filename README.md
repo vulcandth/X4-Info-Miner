@@ -9,9 +9,10 @@ pip3 install lxml
 
 ## Changes
 
-* 2025-03-16: Ver 1.0.1 - Added Proximity information
+* 2025-03-16: Ver 1.0.1 
+  - Added Proximity information (-p)
+  - Added Player Location (-w)
 * 2025-03-15: Ver 1.0.0 - Initial release
-
 
 ## x4-save-miner
 
@@ -19,7 +20,7 @@ The `x4-save-miner.py` script is used to extract useful information from any sav
 
 Usage:
 ```
-usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-p] [-q] [-i INFO] [-s] savefile
+usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-p] [-w] [-q] [-i INFO] [-s] savefile
 
 positional arguments:
   savefile              The savegame you want to analyse
@@ -31,6 +32,7 @@ options:
   -d, --datavaults      Display Data Vault locations
   -e, --erlking         Display Erlking Data Vault locations
   -p, --proximity       Display The proximity to the closest station
+  -w, --whereswally     Display player location information
   -q, --quiet           Suppress warnings in interactive mode
   -i INFO, --info INFO  information level [1-3]. Default is 1 (sector only)
   -s, --shell           Starts a python shell to interract with the XML data (read-only)

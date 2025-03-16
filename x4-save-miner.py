@@ -42,6 +42,7 @@ parser.add_argument("-l", "--lockboxes", help="Display lockbox locations", actio
 parser.add_argument("-d", "--datavaults", help="Display Data Vault locations", action="store_true")
 parser.add_argument("-e", "--erlking", help="Display Erlking Data Vault locations", action="store_true")
 parser.add_argument("-p", "--proximity", help="Display The proximity to the closest station", action="store_true")
+parser.add_argument("-w", "--whereswally", help="Display player location information", action="store_true")
 parser.add_argument("-q", "--quiet", help="Suppress warnings in interactive mode", action="store_true")
 parser.add_argument("-i", "--info", help="information level [1-3]. Default is 1 (sector only)", default='1')
 parser.add_argument("-s", "--shell", help="Starts a python shell to interract with the XML data (read-only)", action="store_true")
@@ -72,6 +73,7 @@ ignoredConnections = {}
 sector_zone_offsets = {}
 sector_macros = {}
 phq = None
+playerLocation = None
 
 if len(sys.argv) < 3:
     parser.print_usage()
@@ -400,9 +402,12 @@ def updateAll(proximity=False):
 
 def updateOwnerless(proximity=False):
     for ship in freeShips:
-        ship.set('location', json.dumps(getPosition(ship)))
+        updateObject(ship, proximity)
+
+def updateObject(obj, proximity=False):
+        obj.set('location', json.dumps(getPosition(obj)))
         if proximity:
-            ship.set('proximity', json.dumps(getProximity(ship)))
+            obj.set('proximity', json.dumps(getProximity(obj)))
 
 def printOwnerless():
     print("")
@@ -413,9 +418,7 @@ def printOwnerless():
 
 def updateLockboxes(proximity=False):
     for lb in lockboxes:
-        lb.set('location', str(getPosition(lb)))
-        if proximity:
-            lb.set('proximity', json.dumps(getProximity(lb)))
+        updateObject(lb, proximity)
 
 def printLockboxes():
     print("")
@@ -425,15 +428,11 @@ def printLockboxes():
 
 def updateDataVaults(proximity=False):
     for vault in dataVaults:
-        vault.set('location', str(getPosition(vault)))
-        if proximity:
-            vault.set('proximity', json.dumps(getProximity(vault)))
+        updateObject(vault, proximity)
 
 def updateErlkingVaults(proximity=False):
     for vault in erlkingVaults:
-        vault.set('location', str(getPosition(vault)))
-        if proximity:
-            vault.set('proximity', json.dumps(getProximity(vault)))
+        updateObject(vault, proximity)
 
 def printDataVaults():
     print("")
@@ -491,6 +490,10 @@ for sector in sectors:
             else:
                 allCodes[myCode] = resource
         
+        player = resource.findall(".//component[@class='player']")
+        if player != None and len(player) > 0:
+            playerLocation = resource
+
         if connection == "stations":
             if resource.get('macro') == "station_pla_headquarters_base_01_macro":
                 phq = resource
@@ -550,6 +553,12 @@ if args.datavaults:
 if args.erlking:
     updateErlkingVaults(args.proximity)
     printErlkingVaults()
+
+if args.whereswally:
+    print("Player Location")
+    print("===============")
+    updateObject(playerLocation, args.proximity)
+    printShip(playerLocation)
 
 if args.shell:
     print("")
