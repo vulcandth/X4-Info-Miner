@@ -9,8 +9,10 @@ pip3 install lxml
 
 ## Changes
 
+* 2025-03-19: Ver 1.0.3
+  - Added Code Finder (-c) to print information about any 'coded' object
 * 2025-03-19: Ver 1.0.2
-  - Added XML Dumper (-x) to print information about any 'coded' object
+  - Added XML Dumper (-x) to dump XML information about any 'coded' object
   - Fix for (-w) when used without (-p)
   - Shell usage has changed, the get[Object|Ship|Station]() functions have been pluralised and now return arrays
     getShip('FOO-001') would return the first match, getShips('FOO-001') returns all matches. Singular methods have been removed.
@@ -25,7 +27,7 @@ The `x4-save-miner.py` script is used to extract useful information from any sav
 
 Usage:
 ```
-usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-p] [-w] [-x XML] [-q] [-i INFO] [-s] savefile
+usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-c CODE] [-p] [-w] [-x XML] [-q] [-i INFO] [-s] savefile
 
 positional arguments:
   savefile              The savegame you want to analyse
@@ -36,6 +38,7 @@ options:
   -l, --lockboxes       Display lockbox locations
   -d, --datavaults      Display Data Vault locations
   -e, --erlking         Display Erlking Data Vault locations
+  -c CODE, --code CODE  Display location of the items with code
   -p, --proximity       Display The proximity to the closest station
   -w, --whereswally     Display player location information
   -x XML, --xml XML     Dump the XML for a specific resource by code

@@ -41,6 +41,7 @@ parser.add_argument("-o", "--ownerless", help="Display ownerless ship locations"
 parser.add_argument("-l", "--lockboxes", help="Display lockbox locations", action="store_true")
 parser.add_argument("-d", "--datavaults", help="Display Data Vault locations", action="store_true")
 parser.add_argument("-e", "--erlking", help="Display Erlking Data Vault locations", action="store_true")
+parser.add_argument("-c", "--code", help="Display location of the items with code")
 parser.add_argument("-p", "--proximity", help="Display The proximity to the closest station", action="store_true")
 parser.add_argument("-w", "--whereswally", help="Display player location information", action="store_true")
 parser.add_argument("-x", "--xml", help="Dump the XML for a specific resource by code")
@@ -560,6 +561,14 @@ if args.datavaults:
 if args.erlking:
     updateErlkingVaults(args.proximity)
     printErlkingVaults()
+
+if args.code:
+    print("Matching Codes")
+    print("===============")
+    matching = getObjects(args.code)
+    for match in matching:
+        updateObject(match, args.proximity)
+        printShip(match, args.info)
 
 if args.whereswally:
     print("Player Location")
