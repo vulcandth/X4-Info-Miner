@@ -9,6 +9,11 @@ pip3 install lxml
 
 ## Changes
 
+* 2025-03-19: Ver 1.0.2
+  - Added XML Dumper (-x) to print information about any 'coded' object
+  - Fix for (-w) when used without (-p)
+  - Shell usage has changed, the get[Object|Ship|Station]() functions have been pluralised and now return arrays
+    getShip('FOO-001') would return the first match, getShips('FOO-001') returns all matches. Singular methods have been removed.
 * 2025-03-16: Ver 1.0.1 
   - Added Proximity information (-p)
   - Added Player Location (-w)
@@ -20,7 +25,7 @@ The `x4-save-miner.py` script is used to extract useful information from any sav
 
 Usage:
 ```
-usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-p] [-w] [-q] [-i INFO] [-s] savefile
+usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-p] [-w] [-x XML] [-q] [-i INFO] [-s] savefile
 
 positional arguments:
   savefile              The savegame you want to analyse
@@ -33,6 +38,7 @@ options:
   -e, --erlking         Display Erlking Data Vault locations
   -p, --proximity       Display The proximity to the closest station
   -w, --whereswally     Display player location information
+  -x XML, --xml XML     Dump the XML for a specific resource by code
   -q, --quiet           Suppress warnings in interactive mode
   -i INFO, --info INFO  information level [1-3]. Default is 1 (sector only)
   -s, --shell           Starts a python shell to interract with the XML data (read-only)
@@ -194,10 +200,10 @@ Python Shell starting...
 
 Available Functions: 
 
-  getShip('code')           # Fetch information about a specific ship
-  getStation('code')        # Fetch information about a specific station
-  getObject('code')         # Fetch information about any object with a code
-  getSector('code')         # Fetch information about a specific sector
+  getShips('code')          # Fetch information about a specific ship code (returns an array of ships)
+  getStations('code')       # Fetch information about a specific station (returns an array of stations)
+  getObjects('code')        # Fetch information about any object with a code (returns an array of objets)
+  getSectors('code')        # Fetch information about a specific sector (returns an array of sectors)
   getSectorObjects('code')  # Fetch stations and ships currently inside the given sector
   printXML('code')          # Print the XML for a resource and its children
   getDupes('code')          # Fetch all duplicates or those with provided code
@@ -205,6 +211,7 @@ Available Functions:
 
 Fetch interesting (special) resources
 
+  setLevel(int)                                          # Set information level for print functions
   update[Ownerless|LockBoxes|DataVaults|ErlkingVaults]() # Update locations for these objects
   print[Ownerless|LockBoxes|DataVaults|ErlkingVaults]()  # Print these objects information
 
@@ -217,12 +224,12 @@ Or you know, just use python. The root of the xml tree is in var `root`. Other v
 lists:      sectors duplicates warnings allComponents allStations allShips freeShips
             xenonShips khaakShips dataVaults erlkingVaults lockboxes flotsam other
 dicts:      sectorNames sectorCodes shipCodes stationCodes vaultCodes lockboxCodes allCodes
-            ignoredConnections, sector_zone_offsets, sector_macros
+            ignoredConnections sector_zone_offsets sector_macros
 
-Examples:
+Examples
 
   >>> print(json.dumps(dict(phq.attrib), indent=6)) 
-  >>> printShip(getShip('ULC-584'),3)
+  >>> printShip(getShips('ULC-584')[0],3)
 
 Python 3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0] on linux
 Type "help", "copyright", "credits" or "license" for more information.
@@ -233,6 +240,8 @@ Type "help", "copyright", "credits" or "license" for more information.
 ### Duplicate codes
 
 You probably thought that those station and ship codes were unique. Well that's not necessarily the case, I have many duplicates in some of my save games and you may have too. This wont cause an issue when printing data using one of the flags [`-o`,`-l`,`-d`,`-e`], but it is something to bear in mind if you go poking around in interactive mode. The functions should warn you if you request data which has a duplicate though. 
+
+From version 1.0.3, the getShip() and similar functions have been replaced with getShips() and similar which return an array of matching items.
 
 ```
 $ ./x4-save-miner.py -s ~/.config/EgoSoft/X4/11524914/save/quicksave.xml.gz 

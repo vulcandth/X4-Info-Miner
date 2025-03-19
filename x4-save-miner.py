@@ -43,6 +43,7 @@ parser.add_argument("-d", "--datavaults", help="Display Data Vault locations", a
 parser.add_argument("-e", "--erlking", help="Display Erlking Data Vault locations", action="store_true")
 parser.add_argument("-p", "--proximity", help="Display The proximity to the closest station", action="store_true")
 parser.add_argument("-w", "--whereswally", help="Display player location information", action="store_true")
+parser.add_argument("-x", "--xml", help="Dump the XML for a specific resource by code")
 parser.add_argument("-q", "--quiet", help="Suppress warnings in interactive mode", action="store_true")
 parser.add_argument("-i", "--info", help="information level [1-3]. Default is 1 (sector only)", default='1')
 parser.add_argument("-s", "--shell", help="Starts a python shell to interract with the XML data (read-only)", action="store_true")
@@ -123,63 +124,63 @@ start = time.time()
 root = etree.fromstring(rawxml, parser=OPTIMIZED_PARSER)
 print('Done. Time: %.2f' % (time.time() - start))
 
-def getSector(code):
-    if code in sectorCodes:
-        return sectorCodes[code]
-    elif code in sectorNames:
-        return sectorNames[code]
-    else:
-        print("WARNING: Sector not found in map, full search will likely fail also")
-        for sector in sectors:
-            if sector.get('code') == code:
-                return sector
-        print("FAILED: Sector Not found. Check your speeling ;-)")
-
-def getShip(code):
-    if code in shipCodes:
-        ship = shipCodes[code]
-        ship.set('location', str(getPosition(ship)))
-        return ship
-    else:
-        print("WARNING: Ship not found in map, full search will likely fail also")
-        for ship in allShips:
-            if ship.get('code') == code:
-                ship.set('location', str(getPosition(ship)))
-                return ship
-        print("FAILED: Ship Not found. Check your speeling ;-)")
-        
-def getObject(code):
-    if code in sectorCodes:
-        return sectorCodes[code]
-    elif code in sectorNames:
-        return sectorNames[code]
-    elif code in allCodes:
-        if code in duplicates:
-            print("WARNING: This object has known duplicates. The returned information could be inaccurate. Try getShip() or getStation() instead")
-        obj = allCodes[code]
-        obj.set('location', str(getPosition(obj)))
-        return obj
-    else:
-        print("WARNING: object not found in any map, full search will likely fail also")
+def getDupeObjects(code):
+    objects = []
+    if code in duplicates:
         for obj in allComponents:
             if obj.get('code') == code:
                 obj.set('location', str(getPosition(obj)))
-                return obj
-        print("FAILED: object Not found. Check your speeling ;-)")
+                objects += [ obj ]
+    return objects
 
-def getStation(code):
-    if code in stationCodes:
-        station = stationCodes[code]
-        station.set('location', str(getPosition(station)))
-        return station
-    else:
-        print("WARNING: Station not found in map, full search will likely fail also")
-        for station in allStations:
-            if station.get('code') == code:
-                station.set('location', str(getPosition(station)))
-                return station
-        print("FAILED: Station Not found. Check your speeling ;-)")
-        
+def getSectors(code):
+    objects = getDupeObjects(code)
+    if len(objects) < 1:
+        if code in sectorCodes:
+            objects = [ sectorCodes[code] ]
+        elif code in sectorNames:
+            objects = [ sectorNames[code] ]
+        else:
+            print("FAILED: Sector Not found. Check your speeling ;-)")
+    return objects
+
+def getShips(code):
+    objects = getDupeObjects(code)
+    if len(objects) < 1:
+        if code in shipCodes:
+            ship = shipCodes[code]
+            ship.set('location', str(getPosition(ship)))
+            objects = [ ship ]
+        else:
+            print("FAILED: Ship Not found. Check your speeling ;-)")
+    return objects
+
+def getObjects(code):
+    objects = getDupeObjects(code)
+    if len(objects) < 1:
+        if code in sectorCodes:
+            objects = [ sectorCodes[code] ]
+        elif code in sectorNames:
+            objects = [ sectorNames[code] ]
+        elif code in allCodes:
+            obj = allCodes[code]
+            obj.set('location', str(getPosition(obj)))
+            objects = [ obj ]
+        else:
+            print("FAILED: object Not found. Check your speeling ;-)")
+    return objects
+
+def getStations(code):
+    objects = getDupeObjects(code)
+    if len(objects) < 1:
+        if code in stationCodes:
+            station = stationCodes[code]
+            station.set('location', str(getPosition(station)))
+            objects = [ station ]
+        else:
+            print("FAILED: Station Not found. Check your speeling ;-)")
+    return objects
+
 def getSectorObjects(code):
     if code in sectorNames:
         code = sectorNames[code].get('code')
@@ -203,7 +204,10 @@ def getProximity(obj):
     distance = 9999999
     infos = []
     if type(obj) is str:
-        obj = getObject(code)
+        objects = getObjects(obj)
+        if len(objects) > 1:
+            print("WARNING: Duplicate code exists for: " + code + ". We could be tracking the wrong object")
+        obj = objects[0]
     sectorCode = obj.get('sector_code')
     sectorObjects = getSectorObjects(sectorCode)
     oLocation = getPosition(obj)
@@ -328,7 +332,9 @@ def printLbDv(resources, title, level=1):
 
 def printShip(ship, level=1):
     sectorName = ship.get('sector_name') if ( ship.get('sector_name') != None ) else ""
-    proximity = json.loads(ship.get('proximity'))
+    proximity = ship.get('proximity')
+    if proximity != None:
+        proximity = json.loads(proximity)
     print("\nShip: " + ship.get('code') + ", Class: " + ship.get('class') + ", Macro: " + ship.get('macro') + 
             "\n  SpawnTime: " + ship.get('spawntime') + "\n  Sector: " + sectorName + " (" + ship.get('sector_code') + ")")
     if int(level) > 1 or proximity != None:
@@ -370,12 +376,13 @@ def printShip(ship, level=1):
     print("")
 
 def printXML(code):
+    print("<matches>")
     if type(code) is str: 
-        print(etree.tostring(getObject(code), pretty_print=True).decode())
-        if code in duplicates:
-            print("WARNING: This object has known duplicates. The returned information could be inaccurate.")
+        for obj in getObjects(code):
+            print(etree.tostring(obj, pretty_print=True).decode())
     else:
         print(etree.tostring(code, pretty_print=True).decode())
+    print("</matches>")
 
 def getDupes(code=None):
     dupes = []
@@ -558,7 +565,10 @@ if args.whereswally:
     print("Player Location")
     print("===============")
     updateObject(playerLocation, args.proximity)
-    printShip(playerLocation)
+    printShip(playerLocation, args.info)
+
+if args.xml != None:
+    printXML(args.xml)
 
 if args.shell:
     print("")
@@ -570,10 +580,10 @@ if args.shell:
                 print(warning)
             print("")
     print("Available Functions: \n")
-    print("  getShip('code')           # Fetch information about a specific ship")
-    print("  getStation('code')        # Fetch information about a specific station")
-    print("  getObject('code')         # Fetch information about any object with a code")
-    print("  getSector('code')         # Fetch information about a specific sector")
+    print("  getShips('code')          # Fetch information about a specific ship code (returns an array of ships)")
+    print("  getStations('code')       # Fetch information about a specific station (returns an array of stations)")
+    print("  getObjects('code')        # Fetch information about any object with a code (returns an array of objets)")
+    print("  getSectors('code')        # Fetch information about a specific sector (returns an array of sectors)")
     print("  getSectorObjects('code')  # Fetch stations and ships currently inside the given sector")
     print("  printXML('code')          # Print the XML for a resource and its children")
     print("  getDupes('code')          # Fetch all duplicates or those with provided code")
@@ -599,7 +609,7 @@ if args.shell:
     print("Examples")
     print("")
     print("  >>> print(json.dumps(dict(phq.attrib), indent=6)) ")
-    print("  >>> printShip(getShip('ULC-584'),3)")
+    print("  >>> printShip(getShips'ULC-584')[0],3)")
     print("")
     code.interact(local=locals())
 
