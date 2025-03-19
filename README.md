@@ -11,6 +11,7 @@ pip3 install lxml
 
 * 2025-03-19: Ver 1.0.3
   - Added Code Finder (-c) to print information about any 'coded' object
+  - Ships output now includes the name if it has one.
 * 2025-03-19: Ver 1.0.2
   - Added XML Dumper (-x) to dump XML information about any 'coded' object
   - Fix for (-w) when used without (-p)

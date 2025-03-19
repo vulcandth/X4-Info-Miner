@@ -332,12 +332,21 @@ def printLbDv(resources, title, level=1):
         print("")
 
 def printShip(ship, level=1):
+    title = ship.get('class')
+    if title.startswith('ship'):
+        title = "Ship"
+    elif title == "station":
+        title = "Station"
+    else:
+        title = "Code"
     sectorName = ship.get('sector_name') if ( ship.get('sector_name') != None ) else ""
+    shipName = ship.get('name') if ( ship.get('name') != None ) else ""
     proximity = ship.get('proximity')
     if proximity != None:
         proximity = json.loads(proximity)
-    print("\nShip: " + ship.get('code') + ", Class: " + ship.get('class') + ", Macro: " + ship.get('macro') + 
-            "\n  SpawnTime: " + ship.get('spawntime') + "\n  Sector: " + sectorName + " (" + ship.get('sector_code') + ")")
+    print("\n" + title + ": " + ship.get('code') + ", Class: " + ship.get('class') + ", Name: " + shipName +
+            "\n  Macro: " + ship.get('macro') + "\n  SpawnTime: " + ship.get('spawntime') + 
+            "\n  Sector: " + sectorName + " (" + ship.get('sector_code') + ")")
     if int(level) > 1 or proximity != None:
         print("  Location: " + ship.get('location') + "\n")
     if proximity:
