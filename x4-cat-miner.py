@@ -133,9 +133,18 @@ def fetchNames( xmlstrings, langid ):
                 for t in page.findall('./t'):
                     tid = t.get('id')
                     if tid != None:
-                        name = re.sub(r".*\(([^)]*).*", r"\1", t.text)
+                        name = t.text
                         names[pid][tid] = name
     return names
+
+def recurseName( identity, names ):
+    text = identity
+    for segment in re.findall(r"({[^}]+})", identity):
+        pageEntry = segment.split(",")
+        segmentText = recurseName( names[pageEntry[0][1:]][pageEntry[1][:-1]], names )
+        text = text.replace(segment, segmentText)
+    text = re.sub(r"(.*)\([^\(]*\)", r"\1", text)
+    return text
 
 def nameSectors( xmlstrings, names):
     sectorNames = {}
@@ -150,14 +159,11 @@ def nameSectors( xmlstrings, names):
             if name != None:
                 id = sector.find('.//properties/identification')
                 if id != None:
-                    idref = id.get('name')
-                    if idref != None:
-                        page = idref.split(',')[0][1:]
-                        entry = idref.split(',')[1][:-1]
-                        if page in names:
-                            if entry in names[page]:
-                                sectorNames[name.lower()] = names[page][entry]
-                                continue
+                    identity = id.get('name')
+                    if identity != None:
+                        sectorNames[name.lower()] = str(recurseName(identity, names))
+                        continue
+                    else:
                         print("Warning: Failed to find name entry for: " + str(name) + ", page: " + page + ", entry: " + entry)
                 else:
                     print("Warning: Found dataset without identification: " + str(name))
@@ -183,8 +189,8 @@ for file in nameMappingFiles:
    xmlstrings = fetchXmlwithCat(args.x4folder, file)
    sectorNames.update( nameSectors(xmlstrings, names ))
 
-with open("x4-offsets.json", "w") as jsonfile:
-    jsonfile.write( json.dumps(offsets, indent=3) )
+with open("x4-offsets.json", "w", encoding='utf-8') as jsonfile:
+    jsonfile.write( json.dumps(offsets, indent=3, ensure_ascii=False) )
 
-with open("x4-names.json", "w") as jsonfile:
-    jsonfile.write( json.dumps(sectorNames, indent=3) )
+with open("x4-names.json", "w", encoding='utf-8') as jsonfile:
+    jsonfile.write( json.dumps(sectorNames, indent=3, ensure_ascii=False) )

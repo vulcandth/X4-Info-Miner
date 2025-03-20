@@ -9,6 +9,8 @@ pip3 install lxml
 
 ## Changes
 
+* 2025-03-20: Ver 1.0.5
+  - Fix multi-language support in the x4-cat-miner.py
 * 2025-03-20: Ver 1.0.4
   - Various bug fixes - merci Emerson
 * 2025-03-19: Ver 1.0.3
