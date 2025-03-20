@@ -9,6 +9,8 @@ pip3 install lxml
 
 ## Changes
 
+* 2025-03-20: Ver 1.0.4
+  - Various bug fixes - merci Emerson
 * 2025-03-19: Ver 1.0.3
   - Added Code Finder (-c) to print information about any 'coded' object
   - Ships output now includes the name if it has one.

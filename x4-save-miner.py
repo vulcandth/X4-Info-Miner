@@ -191,7 +191,7 @@ def getSectorObjects(code):
             sectorObjects['stations'] += [station]
     for ship in allShips:
         if ship.get('sector_code') == code:
-            sectorObjects['ships'] += [station]
+            sectorObjects['ships'] += [ship]
     for vault in dataVaults:
         if vault.get('sector_code') == code:
             sectorObjects['vaults'] += [vault]
@@ -207,7 +207,7 @@ def getProximity(obj):
     if type(obj) is str:
         objects = getObjects(obj)
         if len(objects) > 1:
-            print("WARNING: Duplicate code exists for: " + code + ". We could be tracking the wrong object")
+            print("WARNING: Duplicate code exists for: " + obj + ". We could be tracking the wrong object")
         obj = objects[0]
     sectorCode = obj.get('sector_code')
     sectorObjects = getSectorObjects(sectorCode)
@@ -305,7 +305,9 @@ def printLbDv(resources, title, level=1):
     for resource in resources:
         sectorName = resource.get('sector_name') if ( resource.get('sector_name') != None ) else ""
         known2Player = 'True' if resource.get('knownto') == 'player' else 'False'
-        proximity = json.loads(resource.get('proximity'))
+        proximity = resource.get('proximity')
+        if proximity != None:
+            proximity = json.loads(proximity)
         wares = resource.findall(".//ware")
         blueprints = resource.findall(".//component[@class='collectableblueprints']")
         cwares = resource.findall(".//component[@class='collectablewares']")
@@ -592,7 +594,7 @@ if args.shell:
     print("")
     print("Python Shell starting...")
     print("")
-    if args.quiet == False:
+    if not args.quiet:
         if len(warnings) > 0:
             for warning in warnings:
                 print(warning)
