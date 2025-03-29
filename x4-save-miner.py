@@ -44,7 +44,10 @@ parser.add_argument("-e", "--erlking", help="Display Erlking Data Vault location
 parser.add_argument("-c", "--code", help="Display location of the items with code")
 parser.add_argument("-p", "--proximity", help="Display The proximity to the closest station", action="store_true")
 parser.add_argument("-w", "--whereswally", help="Display player location information", action="store_true")
-parser.add_argument("-x", "--xml", help="Dump the XML for a specific resource by code")
+parser.add_argument("-r", "--wrecks", help="Include wrecks in output", action="store_true")
+parser.add_argument("-x", "--xenon", help="Display Xenon ship locations", action="store_true")
+parser.add_argument("-k", "--khaak", help="Display Khaak ship locations", action="store_true")
+parser.add_argument("-X", "--xml", help="Dump the XML for a specific resource by code")
 parser.add_argument("-q", "--quiet", help="Suppress warnings in interactive mode", action="store_true")
 parser.add_argument("-i", "--info", help="information level [1-3]. Default is 1 (sector only)", default='1')
 parser.add_argument("-s", "--shell", help="Starts a python shell to interract with the XML data (read-only)", action="store_true")
@@ -343,12 +346,14 @@ def printShip(ship, level=1):
         title = "Code"
     sectorName = ship.get('sector_name') if ( ship.get('sector_name') != None ) else ""
     shipName = ship.get('name') if ( ship.get('name') != None ) else ""
+    shipState = ship.get('state') if ( ship.get('state') != None ) else "space-worthy"
     proximity = ship.get('proximity')
     if proximity != None:
         proximity = json.loads(proximity)
     print("\n" + title + ": " + ship.get('code') + ", Class: " + ship.get('class') + ", Name: " + shipName +
-            "\n  Macro: " + ship.get('macro') + "\n  SpawnTime: " + ship.get('spawntime') + 
-            "\n  Sector: " + sectorName + " (" + ship.get('sector_code') + ")")
+            "\n  Macro: " + ship.get('macro') + "\n  SpawnTime: " + ship.get('spawntime') + "\n  State: " + shipState +
+            "\n  Sector: " + sectorName + " (" + ship.get('sector_code') + ")" +
+            "\n  Owner: " + ship.get('owner'))
     if int(level) > 1 or proximity != None:
         print("  Location: " + ship.get('location') + "\n")
     if proximity:
@@ -521,6 +526,9 @@ for sector in sectors:
             if myCode != None:
                 stationCodes[myCode] = resource
         elif connection == "ships":
+            if (resource.get('state') == "wreck"):
+                if args.wrecks is False:
+                    continue
             if (resource.get('owner') == "ownerless"):
                 freeShips += [resource]
             elif (resource.get('owner') == "xenon"):
@@ -554,7 +562,7 @@ for sector in sectors:
                 ignoredConnections[connection] = ignoredConnections[connection] +1
             else:
                 ignoredConnections[connection] = 1
-print('Done. Time: %.2f' % (time.time() - start))
+print('Done. Time: %.2f\n' % (time.time() - start))
 
 
 if args.ownerless:
@@ -580,6 +588,20 @@ if args.code:
     for match in matching:
         updateObject(match, args.proximity)
         printShip(match, args.info)
+
+if args.xenon:
+    print("Xenon Locations")
+    print("===============")
+    for x in xenonShips:
+        updateObject(x, args.proximity)
+        printShip(x, args.info)
+
+if args.khaak:
+    print("Khaak Locations")
+    print("===============")
+    for k in khaakShips:
+        updateObject(k, args.proximity)
+        printShip(k, args.info)
 
 if args.whereswally:
     print("Player Location")

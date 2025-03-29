@@ -9,6 +9,12 @@ pip3 install lxml
 
 ## Changes
 
+* 2025-03-29: Ver 1.0.6
+  - Exclude wrecks from ownerless ships output
+  - XML dump option is now uppercase `-X`
+  - Add `-x` option to show Xenon Ship locations
+  - Add `-k` option to show Kha'ak Ship locations
+  - Add `-r` option to include wrecks in ship output (old behaviour)
 * 2025-03-20: Ver 1.0.5
   - Fix multi-language support in the x4-cat-miner.py
 * 2025-03-20: Ver 1.0.4
@@ -32,7 +38,7 @@ The `x4-save-miner.py` script is used to extract useful information from any sav
 
 Usage:
 ```
-usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-c CODE] [-p] [-w] [-x XML] [-q] [-i INFO] [-s] savefile
+usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-c CODE] [-p] [-w] [-r] [-x] [-k] [-X XML] [-q] [-i INFO] [-s] savefile
 
 positional arguments:
   savefile              The savegame you want to analyse
@@ -46,7 +52,10 @@ options:
   -c CODE, --code CODE  Display location of the items with code
   -p, --proximity       Display The proximity to the closest station
   -w, --whereswally     Display player location information
-  -x XML, --xml XML     Dump the XML for a specific resource by code
+  -r, --wrecks          Include wrecks in output
+  -x, --xenon           Display Xenon ship locations
+  -k, --khaak           Display Khaak ship locations
+  -X XML, --xml XML     Dump the XML for a specific resource by code
   -q, --quiet           Suppress warnings in interactive mode
   -i INFO, --info INFO  information level [1-3]. Default is 1 (sector only)
   -s, --shell           Starts a python shell to interract with the XML data (read-only)
