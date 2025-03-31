@@ -9,6 +9,10 @@ pip3 install lxml
 
 ## Changes
 
+* 2025-03-31: Ver 1.0.7
+  - Add `-K` option to show Kha'ak stations
+  - proximity: Fix N/S/E/W directions
+  - proximity: Include player location in output if they are in the same sector as the object
 * 2025-03-29: Ver 1.0.6
   - Exclude wrecks from ownerless ships output
   - XML dump option is now uppercase `-X`
@@ -38,7 +42,7 @@ The `x4-save-miner.py` script is used to extract useful information from any sav
 
 Usage:
 ```
-usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-c CODE] [-p] [-w] [-r] [-x] [-k] [-X XML] [-q] [-i INFO] [-s] savefile
+usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-c CODE] [-p] [-w] [-r] [-x] [-k] [-K] [-X XML] [-q] [-i INFO] [-s] savefile
 
 positional arguments:
   savefile              The savegame you want to analyse
@@ -55,6 +59,7 @@ options:
   -r, --wrecks          Include wrecks in output
   -x, --xenon           Display Xenon ship locations
   -k, --khaak           Display Khaak ship locations
+  -K, --khaakstations   Display Khaak Station locations
   -X XML, --xml XML     Dump the XML for a specific resource by code
   -q, --quiet           Suppress warnings in interactive mode
   -i INFO, --info INFO  information level [1-3]. Default is 1 (sector only)

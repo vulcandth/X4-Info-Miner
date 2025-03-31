@@ -47,6 +47,7 @@ parser.add_argument("-w", "--whereswally", help="Display player location informa
 parser.add_argument("-r", "--wrecks", help="Include wrecks in output", action="store_true")
 parser.add_argument("-x", "--xenon", help="Display Xenon ship locations", action="store_true")
 parser.add_argument("-k", "--khaak", help="Display Khaak ship locations", action="store_true")
+parser.add_argument("-K", "--khaakstations", help="Display Khaak Station locations", action="store_true")
 parser.add_argument("-X", "--xml", help="Dump the XML for a specific resource by code")
 parser.add_argument("-q", "--quiet", help="Suppress warnings in interactive mode", action="store_true")
 parser.add_argument("-i", "--info", help="information level [1-3]. Default is 1 (sector only)", default='1')
@@ -69,6 +70,7 @@ allShips = []
 freeShips = []
 xenonShips = []
 khaakShips = []
+khaakStations = []
 dataVaults = []
 erlkingVaults = []
 lockboxes = []
@@ -216,27 +218,45 @@ def getProximity(obj):
     sectorObjects = getSectorObjects(sectorCode)
     oLocation = getPosition(obj)
     for station in sectorObjects['stations']:
+        owner = station.get('owner')
+        if owner in ["khaak", "xenon"]:
+            continue
         sLocation = getPosition(station)
         sdist = math.sqrt(math.pow(sLocation['x'] - oLocation['x'],2) + math.pow(sLocation['z'] - oLocation['z'],2) + math.pow(sLocation['y'] - oLocation['y'],2))
         if closest == None or sdist < distance:
             closest = station.get('code')
             distance = sdist
-            infos = [ "The closest station is: " + closest + ", distance: " + str(int(sdist/1000)) + " km" ]
-            xd = oLocation['x'] - sLocation['x']
-            yd = oLocation['y'] - sLocation['y']
-            zd = oLocation['z'] - sLocation['z']
-            if xd > sLocation['x']:
-                infos += [ "Target is " + str(int(abs(xd/1000))) + " km to the east (X Axis)" ]
-            else:
-                infos += [ "Target is " + str(int(abs(xd/1000))) + " km to the west (X Axis)" ]
-            if zd > sLocation['z']:
-                infos += [ "Target is " + str(int(abs(zd/1000))) + " km to the north (Z Axis)" ]
-            else:
-                infos += [ "Target is " + str(int(abs(zd/1000))) + " km to the south (Z Axis)" ]
-            if yd > sLocation['y']: #+y up
-                infos += [ "Target is " + str(int(abs(yd/1000))) + " km above (Y Axis)" ]
-            else:
-                infos += [ "Target is " + str(int(abs(yd/1000))) + " km below (Y Axis)" ]
+            infos = buildProximityInfo(oLocation, sLocation, closest, distance)
+    if playerLocation.get('sector_code') == sectorCode:
+        pLocation = getPosition(playerLocation)
+        pdist = math.sqrt(math.pow(pLocation['x'] - oLocation['x'],2) + math.pow(pLocation['z'] - oLocation['z'],2) + math.pow(pLocation['y'] - oLocation['y'],2))
+        infos += buildProximityInfo(oLocation, pLocation, "player", pdist)
+    return infos
+
+
+def buildProximityInfo(oLocation, sLocation, closest, distance):
+    infos = []
+    if closest == "player":
+        infos = ["", "The player is: " + str(int(distance/1000)) + " km from the object"]
+    else:
+        infos = [ "The closest station is: " + closest + ", distance: " + str(int(distance/1000)) + " km" ]
+    infos += [ "Location: " +  str(sLocation) ]
+
+    xd = oLocation['x'] - sLocation['x']
+    yd = oLocation['y'] - sLocation['y']
+    zd = oLocation['z'] - sLocation['z']
+    if oLocation['x'] > sLocation['x']:
+        infos += [ "Target is " + str(int(abs(xd/1000))) + " km to the east (X Axis)" ]
+    else:
+        infos += [ "Target is " + str(int(abs(xd/1000))) + " km to the west (X Axis)" ]
+    if oLocation['z'] > sLocation['z']:
+        infos += [ "Target is " + str(int(abs(zd/1000))) + " km to the north (Z Axis)" ]
+    else:
+        infos += [ "Target is " + str(int(abs(zd/1000))) + " km to the south (Z Axis)" ]
+    if oLocation['y'] > sLocation['y']: #+y up
+        infos += [ "Target is " + str(int(abs(yd/1000))) + " km above (Y Axis)" ]
+    else:
+        infos += [ "Target is " + str(int(abs(yd/1000))) + " km below (Y Axis)" ]
     return infos
 
 def getPP(code):
@@ -525,6 +545,9 @@ for sector in sectors:
             allStations += [resource]
             if myCode != None:
                 stationCodes[myCode] = resource
+            if resource.get('owner') == "khaak":
+                if "weaponplatform" not in resource.get('macro'):
+                    khaakStations += [ resource ]
         elif connection == "ships":
             if (resource.get('state') == "wreck"):
                 if args.wrecks is False:
@@ -582,7 +605,7 @@ if args.erlking:
     printErlkingVaults()
 
 if args.code:
-    print("Matching Codes")
+    print("\nMatching Codes")
     print("===============")
     matching = getObjects(args.code)
     for match in matching:
@@ -590,21 +613,28 @@ if args.code:
         printShip(match, args.info)
 
 if args.xenon:
-    print("Xenon Locations")
+    print("\nXenon Locations")
     print("===============")
     for x in xenonShips:
         updateObject(x, args.proximity)
         printShip(x, args.info)
 
 if args.khaak:
-    print("Khaak Locations")
+    print("\nKhaak Locations")
     print("===============")
     for k in khaakShips:
         updateObject(k, args.proximity)
         printShip(k, args.info)
 
+if args.khaakstations:
+    print("\nKhaak Station Locations")
+    print("===============")
+    for ks in khaakStations:
+        updateObject(ks, args.proximity)
+        printShip(ks, args.info)
+
 if args.whereswally:
-    print("Player Location")
+    print("\nPlayer Location")
     print("===============")
     updateObject(playerLocation, args.proximity)
     printShip(playerLocation, args.info)
