@@ -539,6 +539,9 @@ for sector in sectors:
             playerLocation = resource
 
         if connection == "stations":
+            if (resource.get('state') == "wreck"):
+                if args.wrecks is False:
+                    continue
             if resource.get('macro') == "station_pla_headquarters_base_01_macro":
                 phq = resource
                 resource.set('location', str(getPosition(resource)))
