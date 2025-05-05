@@ -51,6 +51,7 @@ parser.add_argument("-K", "--khaakstations", help="Display Khaak Station locatio
 parser.add_argument("-X", "--xml", help="Dump the XML for a specific resource by code")
 parser.add_argument("-q", "--quiet", help="Suppress warnings in interactive mode", action="store_true")
 parser.add_argument("-i", "--info", help="information level [1-3]. Default is 1 (sector only)", default='1')
+parser.add_argument("-f", "--factions", help="Display faction relative strengths", action="store_true")
 parser.add_argument("-s", "--shell", help="Starts a python shell to interract with the XML data (read-only)", action="store_true")
 args = parser.parse_args()
 
@@ -79,6 +80,7 @@ other = []
 ignoredConnections = {}
 sector_zone_offsets = {}
 sector_macros = {}
+stats = {}
 phq = None
 playerLocation = None
 
@@ -233,6 +235,19 @@ def getProximity(obj):
         infos += buildProximityInfo(oLocation, pLocation, "player", pdist)
     return infos
 
+def updateStatsInfo(stats, owner, type, subtype=None):
+    if owner in stats:
+        if type in stats[owner]:
+            stats[owner][type]['total'] += 1
+        else:
+            stats[owner][type] = { 'total': 1 }
+    else:
+        stats[owner] = { type: { 'total': 1 } }
+    if subtype:
+        if subtype in stats[owner][type]:
+            stats[owner][type][subtype] += 1
+        else:
+            stats[owner][type][subtype] = 1
 
 def buildProximityInfo(oLocation, sLocation, closest, distance):
     infos = []
@@ -503,6 +518,8 @@ for sector in sectors:
     sectorName = sector_macros[sectorMacro] if sectorMacro in sector_macros else ""
     sector.set('sector_name', sectorName)
 
+    updateStatsInfo(stats, sector.get('owner'), "sectors")
+
     sectorCodes[sectorCode] = sector
     if sectorCode in allCodes:
         warnings += ["WARNING: Sector Shares code with another Object. Sector: " + sectorName + ", Code: " + sectorCode]
@@ -525,12 +542,10 @@ for sector in sectors:
             if myCode in allCodes:
                 warnings += ["WARNING: Duplicate code found for: " + myCode]
                 duplicates += [myCode]
-                if connection == "stations":
-                    if myCode in stationCodes:
-                        warnings += ["WARNING: WARNING: The duplicate is another STATION. Two or more stations have the same code: " + myCode]
-                elif connection == "ships":
-                    if myCode in shipCodes:
-                        warnings += ["WARNING: WARNING: Duplicate is another SHIP. Two or more ships have the same code: " + myCode]
+                if connection == "stations" and myCode in stationCodes:
+                    warnings += ["WARNING: WARNING: The duplicate is another STATION. Two or more stations have the same code: " + myCode]
+                elif connection == "ships" and myCode in shipCodes:
+                    warnings += ["WARNING: WARNING: Duplicate is another SHIP. Two or more ships have the same code: " + myCode]
             else:
                 allCodes[myCode] = resource
         
@@ -551,6 +566,7 @@ for sector in sectors:
             if resource.get('owner') == "khaak":
                 if "weaponplatform" not in resource.get('macro'):
                     khaakStations += [ resource ]
+            updateStatsInfo(stats, resource.get('owner'), "stations")
         elif connection == "ships":
             if (resource.get('state') == "wreck"):
                 if args.wrecks is False:
@@ -564,6 +580,7 @@ for sector in sectors:
             allShips += [resource]
             if myCode != None:
                 shipCodes[myCode] = resource
+            updateStatsInfo(stats, resource.get('owner'), "ships", resource.get('class'))
         elif connection == "objects":
             compClass = resource.get('class')
             if compClass == "datavault":
@@ -641,6 +658,35 @@ if args.whereswally:
     print("===============")
     updateObject(playerLocation, args.proximity)
     printShip(playerLocation, args.info)
+
+if args.factions:
+    print("\nFactions")
+    print("===============")
+    line = "Faction          Sectors   Stations   Ships |     XS     S     M     L     XL"
+    print("-" * len(line))
+    print(line)
+    print("-" * len(line))
+    lines = 0
+    for faction in stats:
+        lines += 1
+        line = faction.capitalize() + (" " * (14 - len(faction)))
+        for resource in ["sectors", "stations", "ships"]:
+            if resource in stats[faction]:
+                res = str(stats[faction][resource]['total'])
+                line += (" " * (3 + len(resource) - len(res))) + res 
+            else:
+                line += (" " * (2 + len(resource))) + "-"
+        line += " |"
+        for ship in ["ship_xs", "ship_s", "ship_m", "ship_l", "ship_xl"]:
+            sub = ship.split('_')[1]
+            if ship in stats[faction]['ships']:
+                res = str(stats[faction]['ships'][ship])
+                line += (" " * (5 + len(sub) - len(res))) + res 
+            else:
+                line += (" " * (4 + len(sub))) + "-"
+        print(line)
+        if lines %2 == 0:
+            print("-" * len(line))
 
 if args.xml != None:
     printXML(args.xml)

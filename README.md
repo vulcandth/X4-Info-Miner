@@ -9,6 +9,8 @@ pip3 install lxml
 
 ## Changes
 
+* 2025-05-05: Ver 1.0.8
+  - Add `-f` option to show print Faction statistics
 * 2025-03-31: Ver 1.0.7
   - Add `-K` option to show Kha'ak stations
   - proximity: Fix N/S/E/W directions
@@ -42,7 +44,7 @@ The `x4-save-miner.py` script is used to extract useful information from any sav
 
 Usage:
 ```
-usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-c CODE] [-p] [-w] [-r] [-x] [-k] [-K] [-X XML] [-q] [-i INFO] [-s] savefile
+usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-c CODE] [-p] [-w] [-r] [-x] [-k] [-K] [-X XML] [-q] [-i INFO] [-f] [-s] savefile
 
 positional arguments:
   savefile              The savegame you want to analyse
@@ -63,6 +65,7 @@ options:
   -X XML, --xml XML     Dump the XML for a specific resource by code
   -q, --quiet           Suppress warnings in interactive mode
   -i INFO, --info INFO  information level [1-3]. Default is 1 (sector only)
+  -f, --factions        Display faction relative strengths
   -s, --shell           Starts a python shell to interract with the XML data (read-only)
 ```
 
