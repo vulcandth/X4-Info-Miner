@@ -679,9 +679,9 @@ if args.factions:
         line += " |"
         for ship in ["ship_xs", "ship_s", "ship_m", "ship_l", "ship_xl"]:
             sub = ship.split('_')[1]
-            if ship in stats[faction]['ships']:
+            if "ships" in stats[faction] and ship in stats[faction]['ships']:
                 res = str(stats[faction]['ships'][ship])
-                line += (" " * (5 + len(sub) - len(res))) + res 
+                line += (" " * (5 + len(sub) - len(res))) + res
             else:
                 line += (" " * (4 + len(sub))) + "-"
         print(line)
