@@ -54,7 +54,8 @@ parser.add_argument("-X", "--xml", help="Dump the XML for a specific resource by
 parser.add_argument("-q", "--quiet", help="Suppress warnings in interactive mode", action="store_true")
 parser.add_argument("-i", "--info", help="information level [1-3]. Default is 1 (sector only)", default='1')
 parser.add_argument("-f", "--factions", help="Display faction relative strengths", action="store_true")
-parser.add_argument("-t", "--trades", help="Display most profitable ware trades. Optional count, max cargo size and 'player' to use player data", nargs='*')
+parser.add_argument("-t", "--trades", help="Display most profitable ware trades. Optional count and max cargo size", nargs='*')
+parser.add_argument("--player", help="Use player location, cargo and credits when ranking trades", action="store_true")
 parser.add_argument("--distance", help="Rank trades by profit per kilometre", action="store_true")
 parser.add_argument("-s", "--shell", help="Starts a python shell to interract with the XML data (read-only)", action="store_true")
 args = parser.parse_args()
@@ -347,17 +348,16 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                 profit_per = buy['price'] - sell['price']
                 total = profit_per * qty
                 if use_distance:
-                    leg = shortest_path_distance(nav_graph, station_offset + sell['index'], station_offset + buy['index'])
-                    if origin is not None:
-                        leg += distance_between(origin, sell['pos'])
-                    if not math.isfinite(leg):
+                    dist_sell_buy = shortest_path_distance(nav_graph, station_offset + sell['index'], station_offset + buy['index'])
+                    if not math.isfinite(dist_sell_buy):
                         continue
-                    dist = leg
+                    player_leg = distance_between(origin, sell['pos']) if origin is not None else 0.0
+                    dist = dist_sell_buy + player_leg
                     score = total / (dist / 1000.0) if dist > 0 else total
                 else:
-                    dist = distance_between(sell['pos'], buy['pos'])
-                    if origin is not None:
-                        dist += distance_between(origin, sell['pos'])
+                    dist_sell_buy = distance_between(sell['pos'], buy['pos'])
+                    player_leg = distance_between(origin, sell['pos']) if origin is not None else 0.0
+                    dist = dist_sell_buy + player_leg
                     score = total
                 deals.append({
                     'ware': ware,
@@ -367,6 +367,8 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                     'profit_per': profit_per,
                     'total': total,
                     'distance': dist,
+                    'sell_buy_dist': dist_sell_buy,
+                    'player_dist': player_leg,
                     'score': score
                 })
     if use_distance:
@@ -859,32 +861,36 @@ if args.trades is not None:
     trade_args = args.trades
     limit = 5
     max_cargo = None
-    use_player = False
-    for arg in trade_args:
-        if isinstance(arg, str) and arg.lower() == 'player':
-            use_player = True
-        elif limit == 5:
-            limit = int(arg)
-        elif max_cargo is None:
-            max_cargo = int(arg)
+    if len(trade_args) >= 1 and trade_args[0] != '':
+        limit = int(trade_args[0])
+    if len(trade_args) >= 2:
+        max_cargo = int(trade_args[1])
+    use_player = args.player
     print("\nProfitable Trades")
     print("=================")
     origin_pos = None
     cargo_limit = max_cargo
     credits = None
+    use_distance = args.distance or use_player
     if use_player and playerLocation is not None:
         origin_pos = getPosition(playerLocation)
         if playerCargo is not None:
             cargo_limit = playerCargo if max_cargo is None else min(max_cargo, playerCargo)
         credits = playerMoney
-    deals = getProfitableTrades(limit, max_cargo, args.distance, origin_pos, cargo_limit, credits)
+    deals = getProfitableTrades(limit, max_cargo, use_distance, origin_pos, cargo_limit, credits)
     for d in deals:
         out = f"{d['ware']}: {d['from']['station']} ({d['from']['sector_name']}) -> {d['to']['station']} ({d['to']['sector_name']}) | Qty {d['qty']} Profit/unit {int(d['profit_per'])} Total {int(d['total'])}"
+        if use_player and 'player_dist' in d:
+            out = f"{playerLocation.get('code')} ({playerLocation.get('sector_name')}) ({int(d['player_dist']/1000)}km)-> " + \
+                  f"{d['from']['station']} ({d['from']['sector_name']}) ({int(d['sell_buy_dist']/1000)}km)-> {d['to']['station']} ({d['to']['sector_name']}) | Qty {d['qty']} Profit/unit {int(d['profit_per'])} Total {int(d['total'])}"
         if 'distance' in d:
             if math.isfinite(d['distance']):
-                out += f" Dist {int(d['distance']/1000)}km"
-                if args.distance:
+                if use_player:
                     out += f" Score {int(d['score'])}"
+                else:
+                    out += f" Dist {int(d['distance']/1000)}km"
+                    if args.distance:
+                        out += f" Score {int(d['score'])}"
             else:
                 out += " Dist N/A"
         print(out)

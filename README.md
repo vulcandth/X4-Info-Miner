@@ -66,7 +66,8 @@ options:
   -q, --quiet           Suppress warnings in interactive mode
   -i INFO, --info INFO  information level [1-3]. Default is 1 (sector only)
   -f, --factions        Display faction relative strengths
-  -t [N] [C] [player], --trades [N] [C] [player]  Show the top N profitable ware trades using at most C cargo (default N=5). Add 'player' to factor player location, cargo and credits
+  -t [N] [C], --trades [N] [C]  Show the top N profitable ware trades using at most C cargo (default N=5)
+  --player              Use player location, cargo and credits when ranking trades
   --distance            Rank trades by profit per kilometre
   -s, --shell           Starts a python shell to interract with the XML data (read-only)
 ```
