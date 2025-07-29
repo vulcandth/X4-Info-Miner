@@ -370,6 +370,28 @@ def shortest_path_distance(graph, start, goal, avoid_nodes=None):
     path_cache[(goal, start)] = dist
     return dist
 
+def distance_from_point_to_station(pos, sector_code, station_idx, avoid_nodes=None):
+    """Return the shortest distance from an arbitrary point to a station.
+
+    The path may start from any gate in the given sector. If the station is in
+    the same sector, a direct line distance is considered. When avoid_nodes is
+    provided, the path through the gate network will avoid those nodes.
+    """
+    station = stations[station_idx]
+    if sector_code == station['sector_code']:
+        best = distance_between(pos, station['pos'])
+    else:
+        best = float('inf')
+    for gidx in sector_gates.get(sector_code, []):
+        start_dist = distance_between(pos, gates[gidx]['pos'])
+        d = shortest_path_distance(nav_graph, gidx, station_offset + station_idx, avoid_nodes)
+        if not math.isfinite(d):
+            continue
+        total = start_dist + d
+        if total < best:
+            best = total
+    return best
+
 def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                         origin=None, cargo_limit=None, credits=None,
                         avoid_illegal=False, avoid_hostile=False):
@@ -407,7 +429,7 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                 avoid_nodes.difference_update({station_offset + sell['index'], station_offset + buy['index']})
                 if len(avoid_nodes) == 0:
                     avoid_nodes = None
-                if use_distance or avoid_nodes is not None:
+                if use_distance or avoid_nodes is not None or (avoid_hostile and origin is not None):
                     dist_sell_buy = shortest_path_distance(
                         nav_graph,
                         station_offset + sell['index'],
@@ -416,9 +438,16 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                     )
                     if not math.isfinite(dist_sell_buy):
                         continue
-                    player_leg = distance_between(origin, sell['pos']) if origin is not None else 0.0
+                    origin_sector = playerLocation.get('sector_code') if origin is not None and playerLocation is not None else None
+                    if origin is not None:
+                        avoid_origin_nodes = hostile_nodes if avoid_hostile else None
+                        player_leg = distance_from_point_to_station(origin, origin_sector, sell['index'], avoid_origin_nodes)
+                        if not math.isfinite(player_leg):
+                            continue
+                    else:
+                        player_leg = 0.0
                     dist = dist_sell_buy + player_leg
-                    score = total / (dist / 1000.0) if dist > 0 else total
+                    score = total / (dist / 1000.0) if use_distance and dist > 0 else total
                     key = score
                 else:
                     dist_sell_buy = distance_between(sell['pos'], buy['pos'])
