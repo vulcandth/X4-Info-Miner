@@ -57,6 +57,7 @@ parser.add_argument("-f", "--factions", help="Display faction relative strengths
 parser.add_argument("-t", "--trades", help="Display most profitable ware trades. Optional count and max cargo size", nargs='*')
 parser.add_argument("--player", help="Use player location, cargo and credits when ranking trades", action="store_true")
 parser.add_argument("--distance", help="Rank trades by profit per kilometre", action="store_true")
+parser.add_argument("--avoid-illegal-sectors", help="Avoid trades through sectors where the ware is illegal", action="store_true")
 parser.add_argument("-s", "--shell", help="Starts a python shell to interract with the XML data (read-only)", action="store_true")
 args = parser.parse_args()
 
@@ -100,6 +101,9 @@ nav_graph = {}
 station_offset = 0
 path_cache = {}
 path_map_cache = {}
+illegal_factions = set()
+illegal_sectors = set()
+illegal_nodes = set()
 
 if len(sys.argv) < 3:
     parser.print_usage()
@@ -152,6 +156,11 @@ print('Done. Time: %.2f' % (time.time() - start))
 player_info = root.find('./info/player')
 if player_info is not None and 'money' in player_info.attrib:
     playerMoney = int(player_info.get('money'))
+
+# Determine which factions enforce illegal wares
+for lic in root.findall(".//licence[@type='station_illegal']"):
+    for fac in lic.get('factions', '').split():
+        illegal_factions.add(fac)
 
 def getDupeObjects(code):
     objects = []
@@ -303,20 +312,35 @@ def build_navigation_graph():
             graph[gidx].append((node, d))
     return graph, station_offset
 
-def shortest_path_distance(graph, start, goal):
+def shortest_path_distance(graph, start, goal, avoid_nodes=None):
     global path_cache, path_map_cache
+    if avoid_nodes:
+        # Run Dijkstra without caching when avoiding nodes
+        dist_map = {start: 0.0}
+        queue = [(0.0, start)]
+        while queue:
+            dist, node = heapq.heappop(queue)
+            if dist > dist_map.get(node, float('inf')):
+                continue
+            for nxt, w in graph.get(node, []):
+                if nxt in avoid_nodes and nxt != goal:
+                    continue
+                nd = dist + w
+                if nd < dist_map.get(nxt, float('inf')):
+                    dist_map[nxt] = nd
+                    heapq.heappush(queue, (nd, nxt))
+        return dist_map.get(goal, float('inf'))
+
     key = (start, goal)
     if key in path_cache:
         return path_cache[key]
 
-    # If we have precomputed distances from this start node use them
     if start in path_map_cache:
         dist = path_map_cache[start].get(goal, float('inf'))
         path_cache[key] = dist
         path_cache[(goal, start)] = dist
         return dist
 
-    # Run Dijkstra from start to all nodes and cache the results
     dist_map = {start: 0.0}
     queue = [(0.0, start)]
     while queue:
@@ -335,7 +359,8 @@ def shortest_path_distance(graph, start, goal):
     return dist
 
 def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
-                        origin=None, cargo_limit=None, credits=None):
+                        origin=None, cargo_limit=None, credits=None,
+                        avoid_illegal=False):
     heap = []
     for ware, sellers in trade_sellers.items():
         buyers = trade_buyers.get(ware)
@@ -343,6 +368,10 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
             continue
         for sell in sellers:
             for buy in buyers:
+                is_illegal_trade = sell.get('illegal') or buy.get('illegal')
+                if avoid_illegal and is_illegal_trade:
+                    if sell['sector_code'] in illegal_sectors or buy['sector_code'] in illegal_sectors:
+                        continue
                 if buy['price'] <= sell['price'] or sell['amount'] == 0 or buy['amount'] == 0:
                     continue
                 qty = min(sell['amount'], buy['amount'])
@@ -356,11 +385,15 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                     continue
                 profit_per = buy['price'] - sell['price']
                 total = profit_per * qty
-                if use_distance:
+                avoid_nodes = None
+                if avoid_illegal and is_illegal_trade:
+                    avoid_nodes = illegal_nodes.difference({station_offset + sell['index'], station_offset + buy['index']})
+                if use_distance or avoid_nodes is not None:
                     dist_sell_buy = shortest_path_distance(
                         nav_graph,
                         station_offset + sell['index'],
-                        station_offset + buy['index']
+                        station_offset + buy['index'],
+                        avoid_nodes
                     )
                     if not math.isfinite(dist_sell_buy):
                         continue
@@ -663,6 +696,9 @@ for sector in sectors:
     sectorName = sector_macros[sectorMacro] if sectorMacro in sector_macros else ""
     sector.set('sector_name', sectorName)
 
+    if sector.get('owner') in illegal_factions:
+        illegal_sectors.add(sectorCode)
+
     updateStatsInfo(stats, sector.get('owner'), "sectors")
 
     sectorCodes[sectorCode] = sector
@@ -738,6 +774,7 @@ for sector in sectors:
                 ware = t.get('ware')
                 price = float(t.get('price', '0'))
                 amount = int(t.get('amount', '0'))
+                illegal = 'shady' in t.get('flags', '')
                 info = {
                     'station': myCode if myCode else '',
                     'sector_name': sectorName,
@@ -745,7 +782,8 @@ for sector in sectors:
                     'price': price,
                     'amount': amount,
                     'pos': station_pos,
-                    'index': station_index
+                    'index': station_index,
+                    'illegal': illegal
                 }
                 if 'seller' in t.attrib:
                     trade_sellers.setdefault(ware, []).append(info)
@@ -792,6 +830,14 @@ for sector in sectors:
 print('Done. Time: %.2f\n' % (time.time() - start))
 
 nav_graph, station_offset = build_navigation_graph()
+
+if args.avoid_illegal_sectors:
+    for gidx, gate in enumerate(gates):
+        if gate['sector_code'] in illegal_sectors:
+            illegal_nodes.add(gidx)
+    for si, station in enumerate(stations):
+        if station['sector_code'] in illegal_sectors:
+            illegal_nodes.add(station_offset + si)
 
 
 if args.ownerless:
@@ -894,7 +940,7 @@ if args.trades is not None:
         if playerCargo is not None:
             cargo_limit = playerCargo if max_cargo is None else min(max_cargo, playerCargo)
         credits = playerMoney
-    deals = getProfitableTrades(limit, max_cargo, use_distance, origin_pos, cargo_limit, credits)
+    deals = getProfitableTrades(limit, max_cargo, use_distance, origin_pos, cargo_limit, credits, args.avoid_illegal_sectors)
     for d in deals:
         profit_unit = f"${d['profit_per']:,.0f}"
         total_profit = f"${d['total']:,.0f}"
@@ -944,7 +990,7 @@ if args.shell:
     print("  setLevel(int)                                          # Set information level for print functions")
     print("  update[Ownerless|LockBoxes|DataVaults|ErlkingVaults]() # Update locations for these objects")
     print("  print[Ownerless|LockBoxes|DataVaults|ErlkingVaults]()  # Print these objects information")
-    print("  getProfitableTrades(n[, max_cargo, use_distance, origin])   # Return n most profitable trades")
+    print("  getProfitableTrades(n[, max_cargo, use_distance, origin, avoid_illegal])   # Return n most profitable trades")
     print("")
     print("  Eg. Display the ownerless ship locations:")
     print("")
