@@ -52,7 +52,7 @@ parser.add_argument("-X", "--xml", help="Dump the XML for a specific resource by
 parser.add_argument("-q", "--quiet", help="Suppress warnings in interactive mode", action="store_true")
 parser.add_argument("-i", "--info", help="information level [1-3]. Default is 1 (sector only)", default='1')
 parser.add_argument("-f", "--factions", help="Display faction relative strengths", action="store_true")
-parser.add_argument("-t", "--trades", help="Display most profitable ware trades. Optional count (default 5)", nargs='?', const=5, type=int)
+parser.add_argument("-t", "--trades", help="Display most profitable ware trades. Optional count and max cargo size", nargs='*')
 parser.add_argument("-s", "--shell", help="Starts a python shell to interract with the XML data (read-only)", action="store_true")
 args = parser.parse_args()
 
@@ -252,7 +252,7 @@ def updateStatsInfo(stats, owner, type, subtype=None):
         else:
             stats[owner][type][subtype] = 1
 
-def getProfitableTrades(limit=5):
+def getProfitableTrades(limit=5, max_cargo=None):
     deals = []
     for ware, sellers in trade_sellers.items():
         if ware not in trade_buyers:
@@ -262,6 +262,10 @@ def getProfitableTrades(limit=5):
                 if buy['price'] <= sell['price'] or sell['amount'] == 0 or buy['amount'] == 0:
                     continue
                 qty = min(sell['amount'], buy['amount'])
+                if max_cargo is not None:
+                    qty = min(qty, max_cargo)
+                if qty == 0:
+                    continue
                 profit_per = buy['price'] - sell['price']
                 total = profit_per * qty
                 deals.append({
@@ -731,9 +735,16 @@ if args.factions:
             print("-" * len(line))
 
 if args.trades is not None:
+    trade_args = args.trades
+    limit = 5
+    max_cargo = None
+    if len(trade_args) >= 1 and trade_args[0] != '':
+        limit = int(trade_args[0])
+    if len(trade_args) >= 2:
+        max_cargo = int(trade_args[1])
     print("\nProfitable Trades")
     print("=================")
-    deals = getProfitableTrades(args.trades)
+    deals = getProfitableTrades(limit, max_cargo)
     for d in deals:
         print(f"{d['ware']}: {d['from']['station']} ({d['from']['sector_name']}) -> {d['to']['station']} ({d['to']['sector_name']}) | Qty {d['qty']} Profit/unit {int(d['profit_per'])} Total {int(d['total'])}")
 
@@ -764,7 +775,7 @@ if args.shell:
     print("  setLevel(int)                                          # Set information level for print functions")
     print("  update[Ownerless|LockBoxes|DataVaults|ErlkingVaults]() # Update locations for these objects")
     print("  print[Ownerless|LockBoxes|DataVaults|ErlkingVaults]()  # Print these objects information")
-    print("  getProfitableTrades(n)                              # Return n most profitable trades")
+    print("  getProfitableTrades(n[, max_cargo])                 # Return n most profitable trades")
     print("")
     print("  Eg. Display the ownerless ship locations:")
     print("")
