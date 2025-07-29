@@ -34,6 +34,8 @@ import json
 import re
 import time
 import math
+import heapq
+from collections import defaultdict
 
 parser = argparse.ArgumentParser()
 parser.add_argument("savefile", help="The savegame you want to analyse")
@@ -53,6 +55,7 @@ parser.add_argument("-q", "--quiet", help="Suppress warnings in interactive mode
 parser.add_argument("-i", "--info", help="information level [1-3]. Default is 1 (sector only)", default='1')
 parser.add_argument("-f", "--factions", help="Display faction relative strengths", action="store_true")
 parser.add_argument("-t", "--trades", help="Display most profitable ware trades. Optional count and max cargo size", nargs='*')
+parser.add_argument("--distance", help="Rank trades by profit per kilometre", action="store_true")
 parser.add_argument("-s", "--shell", help="Starts a python shell to interract with the XML data (read-only)", action="store_true")
 args = parser.parse_args()
 
@@ -86,6 +89,12 @@ phq = None
 playerLocation = None
 trade_buyers = {}
 trade_sellers = {}
+gates = []
+sector_gates = defaultdict(list)
+gate_groups = defaultdict(list)
+stations = []
+nav_graph = {}
+station_offset = 0
 
 if len(sys.argv) < 3:
     parser.print_usage()
@@ -252,7 +261,54 @@ def updateStatsInfo(stats, owner, type, subtype=None):
         else:
             stats[owner][type][subtype] = 1
 
-def getProfitableTrades(limit=5, max_cargo=None):
+def distance_between(p1, p2):
+    xd = p1['x'] - p2['x']
+    yd = p1['y'] - p2['y']
+    zd = p1['z'] - p2['z']
+    return math.sqrt(xd * xd + yd * yd + zd * zd)
+
+def build_navigation_graph():
+    station_offset = len(gates)
+    graph = defaultdict(list)
+    # connect gates that share the same shcon (instant travel)
+    for group in gate_groups.values():
+        for i in group:
+            for j in group:
+                if i != j:
+                    graph[i].append((j, 0.0))
+    # connect gates within the same sector
+    for idxs in sector_gates.values():
+        for a in range(len(idxs)):
+            for b in range(a + 1, len(idxs)):
+                d = distance_between(gates[idxs[a]]['pos'], gates[idxs[b]]['pos'])
+                graph[idxs[a]].append((idxs[b], d))
+                graph[idxs[b]].append((idxs[a], d))
+    # connect stations to gates in their sector
+    for si, station in enumerate(stations):
+        node = station_offset + si
+        for gidx in sector_gates.get(station['sector_code'], []):
+            d = distance_between(station['pos'], gates[gidx]['pos'])
+            graph[node].append((gidx, d))
+            graph[gidx].append((node, d))
+    return graph, station_offset
+
+def shortest_path_distance(graph, start, goal):
+    queue = [(0.0, start)]
+    visited = {}
+    while queue:
+        dist, node = heapq.heappop(queue)
+        if node == goal:
+            return dist
+        if node in visited and visited[node] <= dist:
+            continue
+        visited[node] = dist
+        for nxt, w in graph.get(node, []):
+            nd = dist + w
+            if nxt not in visited or nd < visited.get(nxt, float('inf')):
+                heapq.heappush(queue, (nd, nxt))
+    return float('inf')
+
+def getProfitableTrades(limit=5, max_cargo=None, use_distance=False):
     deals = []
     for ware, sellers in trade_sellers.items():
         if ware not in trade_buyers:
@@ -268,15 +324,27 @@ def getProfitableTrades(limit=5, max_cargo=None):
                     continue
                 profit_per = buy['price'] - sell['price']
                 total = profit_per * qty
+                if use_distance:
+                    dist = shortest_path_distance(nav_graph, station_offset + sell['index'], station_offset + buy['index'])
+                else:
+                    dist = distance_between(sell['pos'], buy['pos'])
+                score = total
+                if use_distance and dist > 0:
+                    score = total / (dist / 1000.0)
                 deals.append({
                     'ware': ware,
                     'from': sell,
                     'to': buy,
                     'qty': qty,
                     'profit_per': profit_per,
-                    'total': total
+                    'total': total,
+                    'distance': dist,
+                    'score': score
                 })
-    deals.sort(key=lambda d: d['total'], reverse=True)
+    if use_distance:
+        deals.sort(key=lambda d: d['score'], reverse=True)
+    else:
+        deals.sort(key=lambda d: d['total'], reverse=True)
     return deals[:limit]
 
 def buildProximityInfo(oLocation, sLocation, closest, distance):
@@ -583,7 +651,16 @@ for sector in sectors:
         if player != None and len(player) > 0:
             playerLocation = resource
 
-        if connection == "stations":
+        if resource.get('class') == 'zone' and resource.get('macro', '').endswith('gatezone_macro'):
+            gate_pos = getPosition(resource)
+            gates.append({'sector_code': sectorCode, 'pos': gate_pos, 'macro': resource.get('macro')})
+            idx = len(gates) - 1
+            sector_gates[sectorCode].append(idx)
+            m = re.search(r'shcon(\d+)_gatezone_macro$', resource.get('macro'))
+            if m:
+                gate_groups[m.group(1)].append(idx)
+
+        elif connection == "stations":
             if (resource.get('state') == "wreck"):
                 if args.wrecks is False:
                     continue
@@ -597,6 +674,9 @@ for sector in sectors:
                 if "weaponplatform" not in resource.get('macro'):
                     khaakStations += [ resource ]
             updateStatsInfo(stats, resource.get('owner'), "stations")
+            station_pos = getPosition(resource)
+            station_index = len(stations)
+            stations.append({'code': myCode if myCode else '', 'sector_code': sectorCode, 'pos': station_pos})
             trades = resource.findall('.//trade/offers//trade')
             for t in trades:
                 ware = t.get('ware')
@@ -607,7 +687,9 @@ for sector in sectors:
                     'sector_name': sectorName,
                     'sector_code': sectorCode,
                     'price': price,
-                    'amount': amount
+                    'amount': amount,
+                    'pos': station_pos,
+                    'index': station_index
                 }
                 if 'seller' in t.attrib:
                     trade_sellers.setdefault(ware, []).append(info)
@@ -652,6 +734,8 @@ for sector in sectors:
             else:
                 ignoredConnections[connection] = 1
 print('Done. Time: %.2f\n' % (time.time() - start))
+
+nav_graph, station_offset = build_navigation_graph()
 
 
 if args.ownerless:
@@ -744,9 +828,17 @@ if args.trades is not None:
         max_cargo = int(trade_args[1])
     print("\nProfitable Trades")
     print("=================")
-    deals = getProfitableTrades(limit, max_cargo)
+    deals = getProfitableTrades(limit, max_cargo, args.distance)
     for d in deals:
-        print(f"{d['ware']}: {d['from']['station']} ({d['from']['sector_name']}) -> {d['to']['station']} ({d['to']['sector_name']}) | Qty {d['qty']} Profit/unit {int(d['profit_per'])} Total {int(d['total'])}")
+        out = f"{d['ware']}: {d['from']['station']} ({d['from']['sector_name']}) -> {d['to']['station']} ({d['to']['sector_name']}) | Qty {d['qty']} Profit/unit {int(d['profit_per'])} Total {int(d['total'])}"
+        if 'distance' in d:
+            if math.isfinite(d['distance']):
+                out += f" Dist {int(d['distance']/1000)}km"
+                if args.distance:
+                    out += f" Score {int(d['score'])}"
+            else:
+                out += " Dist N/A"
+        print(out)
 
 if args.xml != None:
     printXML(args.xml)
@@ -775,7 +867,7 @@ if args.shell:
     print("  setLevel(int)                                          # Set information level for print functions")
     print("  update[Ownerless|LockBoxes|DataVaults|ErlkingVaults]() # Update locations for these objects")
     print("  print[Ownerless|LockBoxes|DataVaults|ErlkingVaults]()  # Print these objects information")
-    print("  getProfitableTrades(n[, max_cargo])                 # Return n most profitable trades")
+    print("  getProfitableTrades(n[, max_cargo, use_distance])   # Return n most profitable trades")
     print("")
     print("  Eg. Display the ownerless ship locations:")
     print("")
