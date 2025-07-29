@@ -414,6 +414,83 @@ def shortest_path_distance_variant(graph, start, goal, variant):
     cache[(goal, start)] = dist
     return dist
 
+# New helper functions to compute actual paths (routes) rather than just
+# distances.  These functions mirror the shortest_path_distance* functions
+# above but also record the predecessors so that the path can be reconstructed.
+def shortest_path_route(graph, start, goal, avoid_nodes=None):
+    """Return a list of node indices representing the shortest path from
+    start to goal.  If no path exists, an empty list is returned.
+
+    avoid_nodes can be a set of nodes to skip (except for the goal).
+    """
+    # Dijkstra search with predecessor tracking
+    dist_map = {start: 0.0}
+    prev_map = {}
+    queue = [(0.0, start)]
+    visited = set()
+    while queue:
+        dist, node = heapq.heappop(queue)
+        if node in visited:
+            continue
+        visited.add(node)
+        if node == goal:
+            break
+        if dist > dist_map.get(node, float('inf')):
+            continue
+        for nxt, w in graph.get(node, []):
+            # Skip avoided nodes unless it's the goal
+            if avoid_nodes and nxt in avoid_nodes and nxt != goal:
+                continue
+            nd = dist + w
+            if nd < dist_map.get(nxt, float('inf')):
+                dist_map[nxt] = nd
+                prev_map[nxt] = node
+                heapq.heappush(queue, (nd, nxt))
+    # Reconstruct path
+    if goal not in dist_map:
+        return []
+    path = []
+    cur = goal
+    while cur != start:
+        path.append(cur)
+        # Guard against missing predecessor (should not happen)
+        if cur not in prev_map:
+            break
+        cur = prev_map[cur]
+    path.append(start)
+    path.reverse()
+    return path
+
+def shortest_path_route_variant(graph, start, goal, variant):
+    """Return a route list using the variant-specific avoid sets."""
+    avoid_set = variant_avoid_sets.get(variant, set())
+    return shortest_path_route(graph, start, goal, avoid_set)
+
+def route_to_sector_names(route):
+    """Convert a route of gate/station node indices into a list of sector names.
+
+    Consecutive duplicate sector names are collapsed to simplify the route.
+    """
+    names = []
+    for node in route:
+        if node >= station_offset:
+            # Station nodes
+            station_idx = node - station_offset
+            sector_code = stations[station_idx]['sector_code']
+            sector = sectorCodes.get(sector_code)
+            names.append(sector.get('sector_name') if sector is not None else '')
+        else:
+            # Gate nodes
+            sector_code = gates[node]['sector_code']
+            sector = sectorCodes.get(sector_code)
+            names.append(sector.get('sector_name') if sector is not None else '')
+    # Collapse consecutive duplicates
+    collapsed = []
+    for n in names:
+        if not collapsed or n != collapsed[-1]:
+            collapsed.append(n)
+    return collapsed
+
 def distance_from_point_to_station_variant(pos, sector_code, station_idx, variant):
     """Return the shortest distance from an arbitrary point to a station using
     variant-specific avoid sets.  For the player's leg we only avoid hostile
@@ -1100,24 +1177,44 @@ if args.trades is not None:
     for d in deals:
         profit_unit = f"${d['profit_per']:,.0f}"
         total_profit = f"${d['total']:,.0f}"
-        base = f"{d['ware']}: {d['from']['station']} ({d['from']['sector_name']}) -> {d['to']['station']} ({d['to']['sector_name']})"
-        out = f"{base} | Qty {d['qty']} Profit/unit {profit_unit} Total {total_profit}"
-        if use_player and 'player_dist' in d:
-            path = (
-                f"{playerLocation.get('code')} ({playerLocation.get('sector_name')}) "
-                f"({int(d['player_dist']/1000)}km)-> {d['from']['station']} "
-                f"({d['from']['sector_name']}) ({int(d['sell_buy_dist']/1000)}km)-> "
-                f"{d['to']['station']} ({d['to']['sector_name']})"
-            )
-            out = f"{d['ware']}: {path} | Qty {d['qty']} Profit/unit {profit_unit} Total {total_profit}"
+        # Determine the avoidance variant to compute the route path.
+        is_illegal_trade = d['from'].get('illegal') or d['to'].get('illegal')
+        if args.avoid_hostile_sectors and args.avoid_illegal_sectors and is_illegal_trade:
+            variant = 'both'
+        elif args.avoid_illegal_sectors and is_illegal_trade:
+            variant = 'illegal'
+        elif args.avoid_hostile_sectors:
+            variant = 'hostile'
+        else:
+            variant = 'none'
+        # Compute the route between seller and buyer and convert to sector names.
+        start_node = station_offset + d['from']['index']
+        goal_node = station_offset + d['to']['index']
+        route_nodes = shortest_path_route_variant(nav_graph, start_node, goal_node, variant)
+        route_names = route_to_sector_names(route_nodes)
+        route_str = " -> ".join(route_names)
+        # Build multi-line output
+        print("")
+        print(f"Ware: {d['ware']}")
+        print(f"From: {d['from']['station']} ({d['from']['sector_name']})")
+        print(f"To  : {d['to']['station']} ({d['to']['sector_name']})")
+        print(f"Qty : {d['qty']} | Profit/unit {profit_unit} | Total {total_profit}")
+        # Distances
+        if use_player and 'player_dist' in d and 'sell_buy_dist' in d:
+            print(f"Player -> Seller: {int(d['player_dist']/1000)}km")
+        print(f"Seller -> Buyer : {int(d['sell_buy_dist']/1000)}km")
         if 'distance' in d:
             if math.isfinite(d['distance']):
-                out += f" Dist {int(d['distance']/1000)}km"
+                print(f"Total distance : {int(d['distance']/1000)}km")
                 if args.distance or use_player:
-                    out += f" Score {int(d['score'])}"
+                    print(f"Score         : {int(d['score'])}")
             else:
-                out += " Dist N/A"
-        print(out)
+                print(f"Total distance : N/A")
+        # Route details
+        if route_names:
+            print(f"Route: {route_str}")
+        else:
+            print("Route: (no valid path)")
 
 if args.xml != None:
     printXML(args.xml)
