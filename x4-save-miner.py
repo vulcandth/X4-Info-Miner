@@ -58,6 +58,7 @@ parser.add_argument("-t", "--trades", help="Display most profitable ware trades.
 parser.add_argument("--player", help="Use player location, cargo and credits when ranking trades", action="store_true")
 parser.add_argument("--distance", help="Rank trades by profit per kilometre", action="store_true")
 parser.add_argument("--avoid-illegal-sectors", help="Avoid trades through sectors where the ware is illegal", action="store_true")
+parser.add_argument("--avoid-hostile-sectors", help="Avoid trades through sectors hostile to the player", action="store_true")
 parser.add_argument("-s", "--shell", help="Starts a python shell to interract with the XML data (read-only)", action="store_true")
 args = parser.parse_args()
 
@@ -104,6 +105,9 @@ path_map_cache = {}
 illegal_factions = set()
 illegal_sectors = set()
 illegal_nodes = set()
+hostile_factions = set()
+hostile_sectors = set()
+hostile_nodes = set()
 
 if len(sys.argv) < 3:
     parser.print_usage()
@@ -156,6 +160,14 @@ print('Done. Time: %.2f' % (time.time() - start))
 player_info = root.find('./info/player')
 if player_info is not None and 'money' in player_info.attrib:
     playerMoney = int(player_info.get('money'))
+
+# Determine which factions are hostile to the player
+for rel in root.findall(".//faction[@id='player']/relations/relation"):
+    try:
+        if float(rel.get('relation', '0')) < -0.25:
+            hostile_factions.add(rel.get('faction'))
+    except ValueError:
+        pass
 
 # Determine which factions enforce illegal wares
 for lic in root.findall(".//licence[@type='station_illegal']"):
@@ -290,12 +302,19 @@ def build_navigation_graph():
     station_offset = len(gates)
     graph = defaultdict(list)
     path_cache = {}
+    gate_index_by_id = {g.get('id'): i for i, g in enumerate(gates) if g.get('id')}
     # connect gates that share the same shcon (instant travel)
     for group in gate_groups.values():
         for i in group:
             for j in group:
                 if i != j:
                     graph[i].append((j, 0.0))
+    # connect gates to their linked counterpart via jump gate/accelerator
+    for i, gate in enumerate(gates):
+        link = gate.get('link')
+        if link and link in gate_index_by_id:
+            j = gate_index_by_id[link]
+            graph[i].append((j, 0.0))
     # connect gates within the same sector
     for idxs in sector_gates.values():
         for a in range(len(idxs)):
@@ -358,10 +377,33 @@ def shortest_path_distance(graph, start, goal, avoid_nodes=None):
     path_cache[(goal, start)] = dist
     return dist
 
+def distance_from_point_to_station(pos, sector_code, station_idx, avoid_nodes=None):
+    """Return the shortest distance from an arbitrary point to a station.
+
+    The path may start from any gate in the given sector. If the station is in
+    the same sector, a direct line distance is considered. When avoid_nodes is
+    provided, the path through the gate network will avoid those nodes.
+    """
+    station = stations[station_idx]
+    if sector_code == station['sector_code']:
+        best = distance_between(pos, station['pos'])
+    else:
+        best = float('inf')
+    for gidx in sector_gates.get(sector_code, []):
+        start_dist = distance_between(pos, gates[gidx]['pos'])
+        d = shortest_path_distance(nav_graph, gidx, station_offset + station_idx, avoid_nodes)
+        if not math.isfinite(d):
+            continue
+        total = start_dist + d
+        if total < best:
+            best = total
+    return best
+
 def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                         origin=None, cargo_limit=None, credits=None,
-                        avoid_illegal=False):
+                        avoid_illegal=False, avoid_hostile=False):
     heap = []
+    counter = 0  # tie-breaker for heap items
     for ware, sellers in trade_sellers.items():
         buyers = trade_buyers.get(ware)
         if not buyers:
@@ -369,6 +411,8 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
         for sell in sellers:
             for buy in buyers:
                 is_illegal_trade = sell.get('illegal') or buy.get('illegal')
+                if avoid_hostile and (sell['sector_code'] in hostile_sectors or buy['sector_code'] in hostile_sectors):
+                    continue
                 if avoid_illegal and is_illegal_trade:
                     if sell['sector_code'] in illegal_sectors or buy['sector_code'] in illegal_sectors:
                         continue
@@ -385,10 +429,15 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                     continue
                 profit_per = buy['price'] - sell['price']
                 total = profit_per * qty
-                avoid_nodes = None
+                avoid_nodes = set()
+                if avoid_hostile:
+                    avoid_nodes.update(hostile_nodes)
                 if avoid_illegal and is_illegal_trade:
-                    avoid_nodes = illegal_nodes.difference({station_offset + sell['index'], station_offset + buy['index']})
-                if use_distance or avoid_nodes is not None:
+                    avoid_nodes.update(illegal_nodes)
+                avoid_nodes.difference_update({station_offset + sell['index'], station_offset + buy['index']})
+                if len(avoid_nodes) == 0:
+                    avoid_nodes = None
+                if use_distance or avoid_nodes is not None or (avoid_hostile and origin is not None):
                     dist_sell_buy = shortest_path_distance(
                         nav_graph,
                         station_offset + sell['index'],
@@ -396,10 +445,19 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                         avoid_nodes
                     )
                     if not math.isfinite(dist_sell_buy):
-                        continue
-                    player_leg = distance_between(origin, sell['pos']) if origin is not None else 0.0
+                        if sell['sector_code'] != buy['sector_code']:
+                            continue
+                        dist_sell_buy = distance_between(sell['pos'], buy['pos'])
+                    origin_sector = playerLocation.get('sector_code') if origin is not None and playerLocation is not None else None
+                    if origin is not None:
+                        avoid_origin_nodes = hostile_nodes if avoid_hostile else None
+                        player_leg = distance_from_point_to_station(origin, origin_sector, sell['index'], avoid_origin_nodes)
+                        if not math.isfinite(player_leg):
+                            continue
+                    else:
+                        player_leg = 0.0
                     dist = dist_sell_buy + player_leg
-                    score = total / (dist / 1000.0) if dist > 0 else total
+                    score = total / (dist / 1000.0) if use_distance and dist > 0 else total
                     key = score
                 else:
                     dist_sell_buy = distance_between(sell['pos'], buy['pos'])
@@ -420,12 +478,12 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                     'score': score
                 }
                 if len(heap) < limit:
-                    heapq.heappush(heap, (key, deal))
+                    heapq.heappush(heap, (key, counter, deal))
                 else:
                     if key > heap[0][0]:
-                        heapq.heapreplace(heap, (key, deal))
-
-    return [d for _, d in sorted(heap, key=lambda x: x[0], reverse=True)]
+                        heapq.heapreplace(heap, (key, counter, deal))
+                counter += 1
+    return [d for _, __, d in sorted(heap, key=lambda x: x[0], reverse=True)]
 
 def buildProximityInfo(oLocation, sLocation, closest, distance):
     infos = []
@@ -696,8 +754,11 @@ for sector in sectors:
     sectorName = sector_macros[sectorMacro] if sectorMacro in sector_macros else ""
     sector.set('sector_name', sectorName)
 
-    if sector.get('owner') in illegal_factions:
+    owner = sector.get('owner')
+    if owner and owner in illegal_factions:
         illegal_sectors.add(sectorCode)
+    if owner and owner in hostile_factions:
+        hostile_sectors.add(sectorCode)
 
     updateStatsInfo(stats, sector.get('owner'), "sectors")
 
@@ -751,6 +812,21 @@ for sector in sectors:
                         playerCargo = int(float(storage.get('capacity')))
                     except ValueError:
                         pass
+
+        if resource.get('class') == 'gate':
+            gate_pos = getPosition(resource)
+            conn = resource.find('./connections/connection')
+            gate_id = None
+            link_id = None
+            if conn is not None:
+                gate_id = conn.get('id')
+                linked = conn.find('./connected')
+                if linked is not None:
+                    link_id = linked.get('connection')
+            gates.append({'sector_code': sectorCode, 'pos': gate_pos, 'id': gate_id, 'link': link_id})
+            idx = len(gates) - 1
+            sector_gates[sectorCode].append(idx)
+            continue
 
         if connection == "stations":
             if (resource.get('state') == "wreck"):
@@ -838,6 +914,14 @@ if args.avoid_illegal_sectors:
     for si, station in enumerate(stations):
         if station['sector_code'] in illegal_sectors:
             illegal_nodes.add(station_offset + si)
+
+if args.avoid_hostile_sectors:
+    for gidx, gate in enumerate(gates):
+        if gate['sector_code'] in hostile_sectors:
+            hostile_nodes.add(gidx)
+    for si, station in enumerate(stations):
+        if station['sector_code'] in hostile_sectors:
+            hostile_nodes.add(station_offset + si)
 
 
 if args.ownerless:
@@ -940,7 +1024,7 @@ if args.trades is not None:
         if playerCargo is not None:
             cargo_limit = playerCargo if max_cargo is None else min(max_cargo, playerCargo)
         credits = playerMoney
-    deals = getProfitableTrades(limit, max_cargo, use_distance, origin_pos, cargo_limit, credits, args.avoid_illegal_sectors)
+    deals = getProfitableTrades(limit, max_cargo, use_distance, origin_pos, cargo_limit, credits, args.avoid_illegal_sectors, args.avoid_hostile_sectors)
     for d in deals:
         profit_unit = f"${d['profit_per']:,.0f}"
         total_profit = f"${d['total']:,.0f}"
@@ -990,7 +1074,7 @@ if args.shell:
     print("  setLevel(int)                                          # Set information level for print functions")
     print("  update[Ownerless|LockBoxes|DataVaults|ErlkingVaults]() # Update locations for these objects")
     print("  print[Ownerless|LockBoxes|DataVaults|ErlkingVaults]()  # Print these objects information")
-    print("  getProfitableTrades(n[, max_cargo, use_distance, origin, avoid_illegal])   # Return n most profitable trades")
+    print("  getProfitableTrades(n[, max_cargo, use_distance, origin, avoid_illegal, avoid_hostile])   # Return n most profitable trades")
     print("")
     print("  Eg. Display the ownerless ship locations:")
     print("")
