@@ -66,6 +66,7 @@ options:
   -q, --quiet           Suppress warnings in interactive mode
   -i INFO, --info INFO  information level [1-3]. Default is 1 (sector only)
   -f, --factions        Display faction relative strengths
+  -t [N], --trades [N]  Show the top N profitable ware trades (default 5)
   -s, --shell           Starts a python shell to interract with the XML data (read-only)
 ```
 

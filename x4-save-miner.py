@@ -52,6 +52,7 @@ parser.add_argument("-X", "--xml", help="Dump the XML for a specific resource by
 parser.add_argument("-q", "--quiet", help="Suppress warnings in interactive mode", action="store_true")
 parser.add_argument("-i", "--info", help="information level [1-3]. Default is 1 (sector only)", default='1')
 parser.add_argument("-f", "--factions", help="Display faction relative strengths", action="store_true")
+parser.add_argument("-t", "--trades", help="Display most profitable ware trades. Optional count (default 5)", nargs='?', const=5, type=int)
 parser.add_argument("-s", "--shell", help="Starts a python shell to interract with the XML data (read-only)", action="store_true")
 args = parser.parse_args()
 
@@ -83,6 +84,8 @@ sector_macros = {}
 stats = {}
 phq = None
 playerLocation = None
+trade_buyers = {}
+trade_sellers = {}
 
 if len(sys.argv) < 3:
     parser.print_usage()
@@ -248,6 +251,29 @@ def updateStatsInfo(stats, owner, type, subtype=None):
             stats[owner][type][subtype] += 1
         else:
             stats[owner][type][subtype] = 1
+
+def getProfitableTrades(limit=5):
+    deals = []
+    for ware, sellers in trade_sellers.items():
+        if ware not in trade_buyers:
+            continue
+        for sell in sellers:
+            for buy in trade_buyers[ware]:
+                if buy['price'] <= sell['price'] or sell['amount'] == 0 or buy['amount'] == 0:
+                    continue
+                qty = min(sell['amount'], buy['amount'])
+                profit_per = buy['price'] - sell['price']
+                total = profit_per * qty
+                deals.append({
+                    'ware': ware,
+                    'from': sell,
+                    'to': buy,
+                    'qty': qty,
+                    'profit_per': profit_per,
+                    'total': total
+                })
+    deals.sort(key=lambda d: d['total'], reverse=True)
+    return deals[:limit]
 
 def buildProximityInfo(oLocation, sLocation, closest, distance):
     infos = []
@@ -567,6 +593,22 @@ for sector in sectors:
                 if "weaponplatform" not in resource.get('macro'):
                     khaakStations += [ resource ]
             updateStatsInfo(stats, resource.get('owner'), "stations")
+            trades = resource.findall('.//trade/offers//trade')
+            for t in trades:
+                ware = t.get('ware')
+                price = float(t.get('price', '0'))
+                amount = int(t.get('amount', '0'))
+                info = {
+                    'station': myCode if myCode else '',
+                    'sector_name': sectorName,
+                    'sector_code': sectorCode,
+                    'price': price,
+                    'amount': amount
+                }
+                if 'seller' in t.attrib:
+                    trade_sellers.setdefault(ware, []).append(info)
+                elif 'buyer' in t.attrib:
+                    trade_buyers.setdefault(ware, []).append(info)
         elif connection == "ships":
             if (resource.get('state') == "wreck"):
                 if args.wrecks is False:
@@ -688,6 +730,13 @@ if args.factions:
         if lines %2 == 0:
             print("-" * len(line))
 
+if args.trades is not None:
+    print("\nProfitable Trades")
+    print("=================")
+    deals = getProfitableTrades(args.trades)
+    for d in deals:
+        print(f"{d['ware']}: {d['from']['station']} ({d['from']['sector_name']}) -> {d['to']['station']} ({d['to']['sector_name']}) | Qty {d['qty']} Profit/unit {int(d['profit_per'])} Total {int(d['total'])}")
+
 if args.xml != None:
     printXML(args.xml)
 
@@ -715,6 +764,7 @@ if args.shell:
     print("  setLevel(int)                                          # Set information level for print functions")
     print("  update[Ownerless|LockBoxes|DataVaults|ErlkingVaults]() # Update locations for these objects")
     print("  print[Ownerless|LockBoxes|DataVaults|ErlkingVaults]()  # Print these objects information")
+    print("  getProfitableTrades(n)                              # Return n most profitable trades")
     print("")
     print("  Eg. Display the ownerless ship locations:")
     print("")
