@@ -625,7 +625,18 @@ for sector in sectors:
     allCodes[sectorCode] = sector
     sectorNames[sectorName] = sector
 
-    zones = sector.findall(".//connections/connection/component[@class='zone']")
+    # gather all zone components so we can detect jump gates/accelerators
+    zones = sector.findall('.//component[@class="zone"]')
+    for zone in zones:
+        macro = zone.get('macro', '')
+        if macro.endswith('gatezone_macro'):
+            gate_pos = getPosition(zone)
+            gates.append({'sector_code': sectorCode, 'pos': gate_pos, 'macro': macro})
+            idx = len(gates) - 1
+            sector_gates[sectorCode].append(idx)
+            m = re.search(r'shcon(\d+)_gatezone_macro$', macro)
+            if m:
+                gate_groups[m.group(1)].append(idx)
 
     resources = sector.findall("./connections/connection/component/connections/connection/component")
     for resource in resources:
@@ -652,16 +663,7 @@ for sector in sectors:
         if player != None and len(player) > 0:
             playerLocation = resource
 
-        if resource.get('class') == 'zone' and resource.get('macro', '').endswith('gatezone_macro'):
-            gate_pos = getPosition(resource)
-            gates.append({'sector_code': sectorCode, 'pos': gate_pos, 'macro': resource.get('macro')})
-            idx = len(gates) - 1
-            sector_gates[sectorCode].append(idx)
-            m = re.search(r'shcon(\d+)_gatezone_macro$', resource.get('macro'))
-            if m:
-                gate_groups[m.group(1)].append(idx)
-
-        elif connection == "stations":
+        if connection == "stations":
             if (resource.get('state') == "wreck"):
                 if args.wrecks is False:
                     continue
