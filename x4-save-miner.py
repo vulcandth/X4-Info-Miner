@@ -302,12 +302,19 @@ def build_navigation_graph():
     station_offset = len(gates)
     graph = defaultdict(list)
     path_cache = {}
+    gate_index_by_id = {g.get('id'): i for i, g in enumerate(gates) if g.get('id')}
     # connect gates that share the same shcon (instant travel)
     for group in gate_groups.values():
         for i in group:
             for j in group:
                 if i != j:
                     graph[i].append((j, 0.0))
+    # connect gates to their linked counterpart via jump gate/accelerator
+    for i, gate in enumerate(gates):
+        link = gate.get('link')
+        if link and link in gate_index_by_id:
+            j = gate_index_by_id[link]
+            graph[i].append((j, 0.0))
     # connect gates within the same sector
     for idxs in sector_gates.values():
         for a in range(len(idxs)):
@@ -805,6 +812,21 @@ for sector in sectors:
                         playerCargo = int(float(storage.get('capacity')))
                     except ValueError:
                         pass
+
+        if resource.get('class') == 'gate':
+            gate_pos = getPosition(resource)
+            conn = resource.find('./connections/connection')
+            gate_id = None
+            link_id = None
+            if conn is not None:
+                gate_id = conn.get('id')
+                linked = conn.find('./connected')
+                if linked is not None:
+                    link_id = linked.get('connection')
+            gates.append({'sector_code': sectorCode, 'pos': gate_pos, 'id': gate_id, 'link': link_id})
+            idx = len(gates) - 1
+            sector_gates[sectorCode].append(idx)
+            continue
 
         if connection == "stations":
             if (resource.get('state') == "wreck"):
