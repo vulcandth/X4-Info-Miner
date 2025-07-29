@@ -879,18 +879,23 @@ if args.trades is not None:
         credits = playerMoney
     deals = getProfitableTrades(limit, max_cargo, use_distance, origin_pos, cargo_limit, credits)
     for d in deals:
-        out = f"{d['ware']}: {d['from']['station']} ({d['from']['sector_name']}) -> {d['to']['station']} ({d['to']['sector_name']}) | Qty {d['qty']} Profit/unit {int(d['profit_per'])} Total {int(d['total'])}"
+        profit_unit = f"${d['profit_per']:,.0f}"
+        total_profit = f"${d['total']:,.0f}"
+        base = f"{d['ware']}: {d['from']['station']} ({d['from']['sector_name']}) -> {d['to']['station']} ({d['to']['sector_name']})"
+        out = f"{base} | Qty {d['qty']} Profit/unit {profit_unit} Total {total_profit}"
         if use_player and 'player_dist' in d:
-            out = f"{playerLocation.get('code')} ({playerLocation.get('sector_name')}) ({int(d['player_dist']/1000)}km)-> " + \
-                  f"{d['from']['station']} ({d['from']['sector_name']}) ({int(d['sell_buy_dist']/1000)}km)-> {d['to']['station']} ({d['to']['sector_name']}) | Qty {d['qty']} Profit/unit {int(d['profit_per'])} Total {int(d['total'])}"
+            path = (
+                f"{playerLocation.get('code')} ({playerLocation.get('sector_name')}) "
+                f"({int(d['player_dist']/1000)}km)-> {d['from']['station']} "
+                f"({d['from']['sector_name']}) ({int(d['sell_buy_dist']/1000)}km)-> "
+                f"{d['to']['station']} ({d['to']['sector_name']})"
+            )
+            out = f"{d['ware']}: {path} | Qty {d['qty']} Profit/unit {profit_unit} Total {total_profit}"
         if 'distance' in d:
             if math.isfinite(d['distance']):
-                if use_player:
+                out += f" Dist {int(d['distance']/1000)}km"
+                if args.distance or use_player:
                     out += f" Score {int(d['score'])}"
-                else:
-                    out += f" Dist {int(d['distance']/1000)}km"
-                    if args.distance:
-                        out += f" Score {int(d['score'])}"
             else:
                 out += " Dist N/A"
         print(out)

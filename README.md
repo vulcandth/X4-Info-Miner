@@ -67,10 +67,12 @@ options:
   -i INFO, --info INFO  information level [1-3]. Default is 1 (sector only)
   -f, --factions        Display faction relative strengths
   -t [N] [C], --trades [N] [C]  Show the top N profitable ware trades using at most C cargo (default N=5)
-  --player              Use player location, cargo and credits when ranking trades
+  --player              Factor the player's ship location, cargo space and credits into trade ranking
   --distance            Rank trades by profit per kilometre
   -s, --shell           Starts a python shell to interract with the XML data (read-only)
 ```
+
+Using `--player` with the trades option ranks deals by profit per kilometre and automatically limits them by your ship's cargo space and available credits.
 
 The savefile can be compressed or uncompressed. It is the importing of the data that takes most of the time, once imported accessing the data is fast.
 
