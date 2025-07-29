@@ -99,6 +99,7 @@ stations = []
 nav_graph = {}
 station_offset = 0
 path_cache = {}
+path_map_cache = {}
 
 if len(sys.argv) < 3:
     parser.print_usage()
@@ -303,37 +304,45 @@ def build_navigation_graph():
     return graph, station_offset
 
 def shortest_path_distance(graph, start, goal):
-    global path_cache
+    global path_cache, path_map_cache
     key = (start, goal)
     if key in path_cache:
         return path_cache[key]
+
+    # If we have precomputed distances from this start node use them
+    if start in path_map_cache:
+        dist = path_map_cache[start].get(goal, float('inf'))
+        path_cache[key] = dist
+        path_cache[(goal, start)] = dist
+        return dist
+
+    # Run Dijkstra from start to all nodes and cache the results
+    dist_map = {start: 0.0}
     queue = [(0.0, start)]
-    visited = {}
     while queue:
         dist, node = heapq.heappop(queue)
-        if node == goal:
-            path_cache[key] = dist
-            path_cache[(goal, start)] = dist
-            return dist
-        if node in visited and visited[node] <= dist:
+        if dist > dist_map.get(node, float('inf')):
             continue
-        visited[node] = dist
         for nxt, w in graph.get(node, []):
             nd = dist + w
-            if nxt not in visited or nd < visited.get(nxt, float('inf')):
+            if nd < dist_map.get(nxt, float('inf')):
+                dist_map[nxt] = nd
                 heapq.heappush(queue, (nd, nxt))
-    path_cache[key] = float('inf')
-    path_cache[(goal, start)] = float('inf')
-    return float('inf')
+    path_map_cache[start] = dist_map
+    dist = dist_map.get(goal, float('inf'))
+    path_cache[key] = dist
+    path_cache[(goal, start)] = dist
+    return dist
 
 def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                         origin=None, cargo_limit=None, credits=None):
-    deals = []
+    heap = []
     for ware, sellers in trade_sellers.items():
-        if ware not in trade_buyers:
+        buyers = trade_buyers.get(ware)
+        if not buyers:
             continue
         for sell in sellers:
-            for buy in trade_buyers[ware]:
+            for buy in buyers:
                 if buy['price'] <= sell['price'] or sell['amount'] == 0 or buy['amount'] == 0:
                     continue
                 qty = min(sell['amount'], buy['amount'])
@@ -348,18 +357,24 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                 profit_per = buy['price'] - sell['price']
                 total = profit_per * qty
                 if use_distance:
-                    dist_sell_buy = shortest_path_distance(nav_graph, station_offset + sell['index'], station_offset + buy['index'])
+                    dist_sell_buy = shortest_path_distance(
+                        nav_graph,
+                        station_offset + sell['index'],
+                        station_offset + buy['index']
+                    )
                     if not math.isfinite(dist_sell_buy):
                         continue
                     player_leg = distance_between(origin, sell['pos']) if origin is not None else 0.0
                     dist = dist_sell_buy + player_leg
                     score = total / (dist / 1000.0) if dist > 0 else total
+                    key = score
                 else:
                     dist_sell_buy = distance_between(sell['pos'], buy['pos'])
                     player_leg = distance_between(origin, sell['pos']) if origin is not None else 0.0
                     dist = dist_sell_buy + player_leg
                     score = total
-                deals.append({
+                    key = score
+                deal = {
                     'ware': ware,
                     'from': sell,
                     'to': buy,
@@ -370,12 +385,14 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                     'sell_buy_dist': dist_sell_buy,
                     'player_dist': player_leg,
                     'score': score
-                })
-    if use_distance:
-        deals.sort(key=lambda d: d['score'], reverse=True)
-    else:
-        deals.sort(key=lambda d: d['total'], reverse=True)
-    return deals[:limit]
+                }
+                if len(heap) < limit:
+                    heapq.heappush(heap, (key, deal))
+                else:
+                    if key > heap[0][0]:
+                        heapq.heapreplace(heap, (key, deal))
+
+    return [d for _, d in sorted(heap, key=lambda x: x[0], reverse=True)]
 
 def buildProximityInfo(oLocation, sLocation, closest, distance):
     infos = []
