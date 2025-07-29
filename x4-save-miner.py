@@ -326,11 +326,12 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False):
                 total = profit_per * qty
                 if use_distance:
                     dist = shortest_path_distance(nav_graph, station_offset + sell['index'], station_offset + buy['index'])
+                    if not math.isfinite(dist):
+                        continue
+                    score = total / (dist / 1000.0) if dist > 0 else total
                 else:
                     dist = distance_between(sell['pos'], buy['pos'])
-                score = total
-                if use_distance and dist > 0:
-                    score = total / (dist / 1000.0)
+                    score = total
                 deals.append({
                     'ware': ware,
                     'from': sell,
