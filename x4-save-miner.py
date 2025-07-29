@@ -396,6 +396,7 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                         origin=None, cargo_limit=None, credits=None,
                         avoid_illegal=False, avoid_hostile=False):
     heap = []
+    counter = 0  # tie-breaker for heap items
     for ware, sellers in trade_sellers.items():
         buyers = trade_buyers.get(ware)
         if not buyers:
@@ -468,12 +469,12 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                     'score': score
                 }
                 if len(heap) < limit:
-                    heapq.heappush(heap, (key, deal))
+                    heapq.heappush(heap, (key, counter, deal))
                 else:
                     if key > heap[0][0]:
-                        heapq.heapreplace(heap, (key, deal))
-
-    return [d for _, d in sorted(heap, key=lambda x: x[0], reverse=True)]
+                        heapq.heapreplace(heap, (key, counter, deal))
+                counter += 1
+    return [d for _, __, d in sorted(heap, key=lambda x: x[0], reverse=True)]
 
 def buildProximityInfo(oLocation, sLocation, closest, distance):
     infos = []
