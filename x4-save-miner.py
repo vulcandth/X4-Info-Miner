@@ -54,7 +54,7 @@ parser.add_argument("-X", "--xml", help="Dump the XML for a specific resource by
 parser.add_argument("-q", "--quiet", help="Suppress warnings in interactive mode", action="store_true")
 parser.add_argument("-i", "--info", help="information level [1-3]. Default is 1 (sector only)", default='1')
 parser.add_argument("-f", "--factions", help="Display faction relative strengths", action="store_true")
-parser.add_argument("-t", "--trades", help="Display most profitable ware trades. Optional count and max cargo size", nargs='*')
+parser.add_argument("-t", "--trades", help="Display most profitable ware trades. Optional count, max cargo size and 'player' to use player data", nargs='*')
 parser.add_argument("--distance", help="Rank trades by profit per kilometre", action="store_true")
 parser.add_argument("-s", "--shell", help="Starts a python shell to interract with the XML data (read-only)", action="store_true")
 args = parser.parse_args()
@@ -87,6 +87,8 @@ sector_macros = {}
 stats = {}
 phq = None
 playerLocation = None
+playerMoney = 0
+playerCargo = None
 trade_buyers = {}
 trade_sellers = {}
 gates = []
@@ -144,6 +146,10 @@ print("Parsing XML...")
 start = time.time()
 root = etree.fromstring(rawxml, parser=OPTIMIZED_PARSER)
 print('Done. Time: %.2f' % (time.time() - start))
+
+player_info = root.find('./info/player')
+if player_info is not None and 'money' in player_info.attrib:
+    playerMoney = int(player_info.get('money'))
 
 def getDupeObjects(code):
     objects = []
@@ -319,7 +325,8 @@ def shortest_path_distance(graph, start, goal):
     path_cache[(goal, start)] = float('inf')
     return float('inf')
 
-def getProfitableTrades(limit=5, max_cargo=None, use_distance=False):
+def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
+                        origin=None, cargo_limit=None, credits=None):
     deals = []
     for ware, sellers in trade_sellers.items():
         if ware not in trade_buyers:
@@ -331,17 +338,26 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False):
                 qty = min(sell['amount'], buy['amount'])
                 if max_cargo is not None:
                     qty = min(qty, max_cargo)
+                if cargo_limit is not None:
+                    qty = min(qty, cargo_limit)
+                if credits is not None and sell['price'] > 0:
+                    qty = min(qty, int(credits // sell['price']))
                 if qty == 0:
                     continue
                 profit_per = buy['price'] - sell['price']
                 total = profit_per * qty
                 if use_distance:
-                    dist = shortest_path_distance(nav_graph, station_offset + sell['index'], station_offset + buy['index'])
-                    if not math.isfinite(dist):
+                    leg = shortest_path_distance(nav_graph, station_offset + sell['index'], station_offset + buy['index'])
+                    if origin is not None:
+                        leg += distance_between(origin, sell['pos'])
+                    if not math.isfinite(leg):
                         continue
+                    dist = leg
                     score = total / (dist / 1000.0) if dist > 0 else total
                 else:
                     dist = distance_between(sell['pos'], buy['pos'])
+                    if origin is not None:
+                        dist += distance_between(origin, sell['pos'])
                     score = total
                 deals.append({
                     'ware': ware,
@@ -673,6 +689,13 @@ for sector in sectors:
         player = resource.findall(".//component[@class='player']")
         if player != None and len(player) > 0:
             playerLocation = resource
+            storage = resource.find(".//component[@class='storage']")
+            if storage is not None:
+                if 'capacity' in storage.attrib:
+                    try:
+                        playerCargo = int(float(storage.get('capacity')))
+                    except ValueError:
+                        pass
 
         if connection == "stations":
             if (resource.get('state') == "wreck"):
@@ -836,13 +859,25 @@ if args.trades is not None:
     trade_args = args.trades
     limit = 5
     max_cargo = None
-    if len(trade_args) >= 1 and trade_args[0] != '':
-        limit = int(trade_args[0])
-    if len(trade_args) >= 2:
-        max_cargo = int(trade_args[1])
+    use_player = False
+    for arg in trade_args:
+        if isinstance(arg, str) and arg.lower() == 'player':
+            use_player = True
+        elif limit == 5:
+            limit = int(arg)
+        elif max_cargo is None:
+            max_cargo = int(arg)
     print("\nProfitable Trades")
     print("=================")
-    deals = getProfitableTrades(limit, max_cargo, args.distance)
+    origin_pos = None
+    cargo_limit = max_cargo
+    credits = None
+    if use_player and playerLocation is not None:
+        origin_pos = getPosition(playerLocation)
+        if playerCargo is not None:
+            cargo_limit = playerCargo if max_cargo is None else min(max_cargo, playerCargo)
+        credits = playerMoney
+    deals = getProfitableTrades(limit, max_cargo, args.distance, origin_pos, cargo_limit, credits)
     for d in deals:
         out = f"{d['ware']}: {d['from']['station']} ({d['from']['sector_name']}) -> {d['to']['station']} ({d['to']['sector_name']}) | Qty {d['qty']} Profit/unit {int(d['profit_per'])} Total {int(d['total'])}"
         if 'distance' in d:
@@ -881,7 +916,7 @@ if args.shell:
     print("  setLevel(int)                                          # Set information level for print functions")
     print("  update[Ownerless|LockBoxes|DataVaults|ErlkingVaults]() # Update locations for these objects")
     print("  print[Ownerless|LockBoxes|DataVaults|ErlkingVaults]()  # Print these objects information")
-    print("  getProfitableTrades(n[, max_cargo, use_distance])   # Return n most profitable trades")
+    print("  getProfitableTrades(n[, max_cargo, use_distance, origin])   # Return n most profitable trades")
     print("")
     print("  Eg. Display the ownerless ship locations:")
     print("")
