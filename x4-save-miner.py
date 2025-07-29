@@ -55,6 +55,7 @@ parser.add_argument("-q", "--quiet", help="Suppress warnings in interactive mode
 parser.add_argument("-i", "--info", help="information level [1-3]. Default is 1 (sector only)", default='1')
 parser.add_argument("-f", "--factions", help="Display faction relative strengths", action="store_true")
 parser.add_argument("-t", "--trades", help="Display most profitable ware trades. Optional count and max cargo size", nargs='*')
+parser.add_argument("--player", help="Use player location, cargo and credits when ranking trades", action="store_true")
 parser.add_argument("--distance", help="Rank trades by profit per kilometre", action="store_true")
 parser.add_argument("-s", "--shell", help="Starts a python shell to interract with the XML data (read-only)", action="store_true")
 args = parser.parse_args()
@@ -87,6 +88,8 @@ sector_macros = {}
 stats = {}
 phq = None
 playerLocation = None
+playerMoney = 0
+playerCargo = None
 trade_buyers = {}
 trade_sellers = {}
 gates = []
@@ -144,6 +147,10 @@ print("Parsing XML...")
 start = time.time()
 root = etree.fromstring(rawxml, parser=OPTIMIZED_PARSER)
 print('Done. Time: %.2f' % (time.time() - start))
+
+player_info = root.find('./info/player')
+if player_info is not None and 'money' in player_info.attrib:
+    playerMoney = int(player_info.get('money'))
 
 def getDupeObjects(code):
     objects = []
@@ -319,7 +326,8 @@ def shortest_path_distance(graph, start, goal):
     path_cache[(goal, start)] = float('inf')
     return float('inf')
 
-def getProfitableTrades(limit=5, max_cargo=None, use_distance=False):
+def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
+                        origin=None, cargo_limit=None, credits=None):
     deals = []
     for ware, sellers in trade_sellers.items():
         if ware not in trade_buyers:
@@ -331,17 +339,25 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False):
                 qty = min(sell['amount'], buy['amount'])
                 if max_cargo is not None:
                     qty = min(qty, max_cargo)
+                if cargo_limit is not None:
+                    qty = min(qty, cargo_limit)
+                if credits is not None and sell['price'] > 0:
+                    qty = min(qty, int(credits // sell['price']))
                 if qty == 0:
                     continue
                 profit_per = buy['price'] - sell['price']
                 total = profit_per * qty
                 if use_distance:
-                    dist = shortest_path_distance(nav_graph, station_offset + sell['index'], station_offset + buy['index'])
-                    if not math.isfinite(dist):
+                    dist_sell_buy = shortest_path_distance(nav_graph, station_offset + sell['index'], station_offset + buy['index'])
+                    if not math.isfinite(dist_sell_buy):
                         continue
+                    player_leg = distance_between(origin, sell['pos']) if origin is not None else 0.0
+                    dist = dist_sell_buy + player_leg
                     score = total / (dist / 1000.0) if dist > 0 else total
                 else:
-                    dist = distance_between(sell['pos'], buy['pos'])
+                    dist_sell_buy = distance_between(sell['pos'], buy['pos'])
+                    player_leg = distance_between(origin, sell['pos']) if origin is not None else 0.0
+                    dist = dist_sell_buy + player_leg
                     score = total
                 deals.append({
                     'ware': ware,
@@ -351,6 +367,8 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False):
                     'profit_per': profit_per,
                     'total': total,
                     'distance': dist,
+                    'sell_buy_dist': dist_sell_buy,
+                    'player_dist': player_leg,
                     'score': score
                 })
     if use_distance:
@@ -673,6 +691,13 @@ for sector in sectors:
         player = resource.findall(".//component[@class='player']")
         if player != None and len(player) > 0:
             playerLocation = resource
+            storage = resource.find(".//component[@class='storage']")
+            if storage is not None:
+                if 'capacity' in storage.attrib:
+                    try:
+                        playerCargo = int(float(storage.get('capacity')))
+                    except ValueError:
+                        pass
 
         if connection == "stations":
             if (resource.get('state') == "wreck"):
@@ -840,15 +865,36 @@ if args.trades is not None:
         limit = int(trade_args[0])
     if len(trade_args) >= 2:
         max_cargo = int(trade_args[1])
+    use_player = args.player
     print("\nProfitable Trades")
     print("=================")
-    deals = getProfitableTrades(limit, max_cargo, args.distance)
+    origin_pos = None
+    cargo_limit = max_cargo
+    credits = None
+    use_distance = args.distance or use_player
+    if use_player and playerLocation is not None:
+        origin_pos = getPosition(playerLocation)
+        if playerCargo is not None:
+            cargo_limit = playerCargo if max_cargo is None else min(max_cargo, playerCargo)
+        credits = playerMoney
+    deals = getProfitableTrades(limit, max_cargo, use_distance, origin_pos, cargo_limit, credits)
     for d in deals:
-        out = f"{d['ware']}: {d['from']['station']} ({d['from']['sector_name']}) -> {d['to']['station']} ({d['to']['sector_name']}) | Qty {d['qty']} Profit/unit {int(d['profit_per'])} Total {int(d['total'])}"
+        profit_unit = f"${d['profit_per']:,.0f}"
+        total_profit = f"${d['total']:,.0f}"
+        base = f"{d['ware']}: {d['from']['station']} ({d['from']['sector_name']}) -> {d['to']['station']} ({d['to']['sector_name']})"
+        out = f"{base} | Qty {d['qty']} Profit/unit {profit_unit} Total {total_profit}"
+        if use_player and 'player_dist' in d:
+            path = (
+                f"{playerLocation.get('code')} ({playerLocation.get('sector_name')}) "
+                f"({int(d['player_dist']/1000)}km)-> {d['from']['station']} "
+                f"({d['from']['sector_name']}) ({int(d['sell_buy_dist']/1000)}km)-> "
+                f"{d['to']['station']} ({d['to']['sector_name']})"
+            )
+            out = f"{d['ware']}: {path} | Qty {d['qty']} Profit/unit {profit_unit} Total {total_profit}"
         if 'distance' in d:
             if math.isfinite(d['distance']):
                 out += f" Dist {int(d['distance']/1000)}km"
-                if args.distance:
+                if args.distance or use_player:
                     out += f" Score {int(d['score'])}"
             else:
                 out += " Dist N/A"
@@ -881,7 +927,7 @@ if args.shell:
     print("  setLevel(int)                                          # Set information level for print functions")
     print("  update[Ownerless|LockBoxes|DataVaults|ErlkingVaults]() # Update locations for these objects")
     print("  print[Ownerless|LockBoxes|DataVaults|ErlkingVaults]()  # Print these objects information")
-    print("  getProfitableTrades(n[, max_cargo, use_distance])   # Return n most profitable trades")
+    print("  getProfitableTrades(n[, max_cargo, use_distance, origin])   # Return n most profitable trades")
     print("")
     print("  Eg. Display the ownerless ship locations:")
     print("")
