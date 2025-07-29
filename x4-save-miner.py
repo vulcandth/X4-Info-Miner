@@ -95,6 +95,7 @@ gate_groups = defaultdict(list)
 stations = []
 nav_graph = {}
 station_offset = 0
+path_cache = {}
 
 if len(sys.argv) < 3:
     parser.print_usage()
@@ -268,8 +269,10 @@ def distance_between(p1, p2):
     return math.sqrt(xd * xd + yd * yd + zd * zd)
 
 def build_navigation_graph():
+    global path_cache
     station_offset = len(gates)
     graph = defaultdict(list)
+    path_cache = {}
     # connect gates that share the same shcon (instant travel)
     for group in gate_groups.values():
         for i in group:
@@ -293,11 +296,17 @@ def build_navigation_graph():
     return graph, station_offset
 
 def shortest_path_distance(graph, start, goal):
+    global path_cache
+    key = (start, goal)
+    if key in path_cache:
+        return path_cache[key]
     queue = [(0.0, start)]
     visited = {}
     while queue:
         dist, node = heapq.heappop(queue)
         if node == goal:
+            path_cache[key] = dist
+            path_cache[(goal, start)] = dist
             return dist
         if node in visited and visited[node] <= dist:
             continue
@@ -306,6 +315,8 @@ def shortest_path_distance(graph, start, goal):
             nd = dist + w
             if nxt not in visited or nd < visited.get(nxt, float('inf')):
                 heapq.heappush(queue, (nd, nxt))
+    path_cache[key] = float('inf')
+    path_cache[(goal, start)] = float('inf')
     return float('inf')
 
 def getProfitableTrades(limit=5, max_cargo=None, use_distance=False):
