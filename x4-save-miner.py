@@ -377,6 +377,65 @@ def shortest_path_distance(graph, start, goal, avoid_nodes=None):
     path_cache[(goal, start)] = dist
     return dist
 
+def shortest_path_distance_variant(graph, start, goal, variant):
+    """Compute shortest path distance using per-variant caches.
+
+    variant can be 'none', 'hostile', 'illegal', or 'both'.
+    Distances are cached for each start node per variant.  Nodes in
+    variant_avoid_sets[variant] are skipped except for the goal.
+    """
+    avoid_set = variant_avoid_sets.get(variant, set())
+    key = (start, goal)
+    cache = path_cache_variants[variant]
+    if key in cache:
+        return cache[key]
+    dist_map_cache = path_map_cache_variants[variant]
+    if start in dist_map_cache:
+        dist = dist_map_cache[start].get(goal, float('inf'))
+        cache[key] = dist
+        cache[(goal, start)] = dist
+        return dist
+    dist_map = {start: 0.0}
+    queue = [(0.0, start)]
+    while queue:
+        dist, node = heapq.heappop(queue)
+        if dist > dist_map.get(node, float('inf')):
+            continue
+        for nxt, w in graph.get(node, []):
+            if nxt in avoid_set and nxt != goal:
+                continue
+            nd = dist + w
+            if nd < dist_map.get(nxt, float('inf')):
+                dist_map[nxt] = nd
+                heapq.heappush(queue, (nd, nxt))
+    dist_map_cache[start] = dist_map
+    dist = dist_map.get(goal, float('inf'))
+    cache[key] = dist
+    cache[(goal, start)] = dist
+    return dist
+
+def distance_from_point_to_station_variant(pos, sector_code, station_idx, variant):
+    """Return the shortest distance from an arbitrary point to a station using
+    variant-specific avoid sets.  For the player's leg we only avoid hostile
+    sectors (variant 'hostile'); illegal sectors are ignored here.
+    """
+    station = stations[station_idx]
+    best = distance_between(pos, station['pos']) if sector_code == station['sector_code'] else float('inf')
+    for gidx in sector_gates.get(sector_code, []):
+        start_dist = distance_between(pos, gates[gidx]['pos'])
+        d = shortest_path_distance_variant(
+            graph=nav_graph,
+            start=gidx,
+            goal=station_offset + station_idx,
+            variant=variant
+        )
+        if not math.isfinite(d):
+            continue
+        total = start_dist + d
+        if total < best:
+            best = total
+    return best
+
 def distance_from_point_to_station(pos, sector_code, station_idx, avoid_nodes=None):
     """Return the shortest distance from an arbitrary point to a station.
 
@@ -411,11 +470,15 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
         for sell in sellers:
             for buy in buyers:
                 is_illegal_trade = sell.get('illegal') or buy.get('illegal')
-                if avoid_hostile and (sell['sector_code'] in hostile_sectors or buy['sector_code'] in hostile_sectors):
-                    continue
-                if avoid_illegal and is_illegal_trade:
-                    if sell['sector_code'] in illegal_sectors or buy['sector_code'] in illegal_sectors:
-                        continue
+                # Select which avoidance variant to use based on flags.
+                if avoid_hostile and avoid_illegal and is_illegal_trade:
+                    variant = 'both'
+                elif avoid_illegal and is_illegal_trade:
+                    variant = 'illegal'
+                elif avoid_hostile:
+                    variant = 'hostile'
+                else:
+                    variant = 'none'
                 if buy['price'] <= sell['price'] or sell['amount'] == 0 or buy['amount'] == 0:
                     continue
                 qty = min(sell['amount'], buy['amount'])
@@ -429,42 +492,36 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                     continue
                 profit_per = buy['price'] - sell['price']
                 total = profit_per * qty
-                avoid_nodes = set()
-                if avoid_hostile:
-                    avoid_nodes.update(hostile_nodes)
-                if avoid_illegal and is_illegal_trade:
-                    avoid_nodes.update(illegal_nodes)
-                avoid_nodes.difference_update({station_offset + sell['index'], station_offset + buy['index']})
-                if len(avoid_nodes) == 0:
-                    avoid_nodes = None
-                if use_distance or avoid_nodes is not None or (avoid_hostile and origin is not None):
-                    dist_sell_buy = shortest_path_distance(
-                        nav_graph,
-                        station_offset + sell['index'],
-                        station_offset + buy['index'],
-                        avoid_nodes
+                # Compute the distance between seller and buyer via the chosen variant.
+                dist_sell_buy = shortest_path_distance_variant(
+                    graph=nav_graph,
+                    start=station_offset + sell['index'],
+                    goal=station_offset + buy['index'],
+                    variant=variant
+                )
+                # If there is no valid path through the allowed sectors, skip the trade.
+                if not math.isfinite(dist_sell_buy):
+                    continue
+                # Compute the player's leg if an origin is provided.  Avoid-hostile
+                # sectors apply to the player path; illegal sectors do not.
+                if origin is not None:
+                    origin_sector = playerLocation.get('sector_code') if playerLocation is not None else None
+                    player_variant = 'hostile' if avoid_hostile else 'none'
+                    player_leg = distance_from_point_to_station_variant(
+                        pos=origin,
+                        sector_code=origin_sector,
+                        station_idx=sell['index'],
+                        variant=player_variant
                     )
-                    if not math.isfinite(dist_sell_buy):
-                        if sell['sector_code'] != buy['sector_code']:
-                            continue
-                        dist_sell_buy = distance_between(sell['pos'], buy['pos'])
-                    origin_sector = playerLocation.get('sector_code') if origin is not None and playerLocation is not None else None
-                    if origin is not None:
-                        avoid_origin_nodes = hostile_nodes if avoid_hostile else None
-                        player_leg = distance_from_point_to_station(origin, origin_sector, sell['index'], avoid_origin_nodes)
-                        if not math.isfinite(player_leg):
-                            continue
-                    else:
-                        player_leg = 0.0
-                    dist = dist_sell_buy + player_leg
-                    score = total / (dist / 1000.0) if use_distance and dist > 0 else total
-                    key = score
+                    # If the player cannot reach the selling station without travelling through hostile sectors, skip.
+                    if not math.isfinite(player_leg):
+                        continue
                 else:
-                    dist_sell_buy = distance_between(sell['pos'], buy['pos'])
-                    player_leg = distance_between(origin, sell['pos']) if origin is not None else 0.0
-                    dist = dist_sell_buy + player_leg
-                    score = total
-                    key = score
+                    player_leg = 0.0
+                dist = dist_sell_buy + player_leg
+                # Use distance weighting if requested
+                score = (total / (dist / 1000.0)) if use_distance and dist > 0 else total
+                key = score
                 deal = {
                     'ware': ware,
                     'from': sell,
@@ -922,6 +979,21 @@ if args.avoid_hostile_sectors:
     for si, station in enumerate(stations):
         if station['sector_code'] in hostile_sectors:
             hostile_nodes.add(station_offset + si)
+
+# Build variant avoid sets and per-variant caches for pathfinding.
+# 'none'  : no sectors are avoided,
+# 'hostile': avoid sectors owned by hostile factions,
+# 'illegal': avoid sectors where the ware is illegal,
+# 'both'  : avoid both hostile and illegal sectors for illegal wares.
+variant_avoid_sets = {
+    'none': set(),
+    'hostile': set(hostile_nodes),
+    'illegal': set(illegal_nodes),
+    'both': set(hostile_nodes | illegal_nodes),
+}
+# Each variant gets its own path_map_cache and path_cache.
+path_map_cache_variants = {key: {} for key in variant_avoid_sets}
+path_cache_variants = {key: {} for key in variant_avoid_sets}
 
 
 if args.ownerless:
