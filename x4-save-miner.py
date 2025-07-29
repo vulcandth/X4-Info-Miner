@@ -58,6 +58,7 @@ parser.add_argument("-t", "--trades", help="Display most profitable ware trades.
 parser.add_argument("--player", help="Use player location, cargo and credits when ranking trades", action="store_true")
 parser.add_argument("--distance", help="Rank trades by profit per kilometre", action="store_true")
 parser.add_argument("--avoid-illegal-sectors", help="Avoid trades through sectors where the ware is illegal", action="store_true")
+parser.add_argument("--avoid-hostile-sectors", help="Avoid trades through sectors hostile to the player", action="store_true")
 parser.add_argument("-s", "--shell", help="Starts a python shell to interract with the XML data (read-only)", action="store_true")
 args = parser.parse_args()
 
@@ -104,6 +105,9 @@ path_map_cache = {}
 illegal_factions = set()
 illegal_sectors = set()
 illegal_nodes = set()
+hostile_factions = set()
+hostile_sectors = set()
+hostile_nodes = set()
 
 if len(sys.argv) < 3:
     parser.print_usage()
@@ -156,6 +160,14 @@ print('Done. Time: %.2f' % (time.time() - start))
 player_info = root.find('./info/player')
 if player_info is not None and 'money' in player_info.attrib:
     playerMoney = int(player_info.get('money'))
+
+# Determine which factions are hostile to the player
+for rel in root.findall(".//faction[@id='player']/relations/relation"):
+    try:
+        if float(rel.get('relation', '0')) < -0.25:
+            hostile_factions.add(rel.get('faction'))
+    except ValueError:
+        pass
 
 # Determine which factions enforce illegal wares
 for lic in root.findall(".//licence[@type='station_illegal']"):
@@ -360,7 +372,7 @@ def shortest_path_distance(graph, start, goal, avoid_nodes=None):
 
 def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                         origin=None, cargo_limit=None, credits=None,
-                        avoid_illegal=False):
+                        avoid_illegal=False, avoid_hostile=False):
     heap = []
     for ware, sellers in trade_sellers.items():
         buyers = trade_buyers.get(ware)
@@ -369,6 +381,8 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
         for sell in sellers:
             for buy in buyers:
                 is_illegal_trade = sell.get('illegal') or buy.get('illegal')
+                if avoid_hostile and (sell['sector_code'] in hostile_sectors or buy['sector_code'] in hostile_sectors):
+                    continue
                 if avoid_illegal and is_illegal_trade:
                     if sell['sector_code'] in illegal_sectors or buy['sector_code'] in illegal_sectors:
                         continue
@@ -385,9 +399,14 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                     continue
                 profit_per = buy['price'] - sell['price']
                 total = profit_per * qty
-                avoid_nodes = None
+                avoid_nodes = set()
+                if avoid_hostile:
+                    avoid_nodes.update(hostile_nodes)
                 if avoid_illegal and is_illegal_trade:
-                    avoid_nodes = illegal_nodes.difference({station_offset + sell['index'], station_offset + buy['index']})
+                    avoid_nodes.update(illegal_nodes)
+                avoid_nodes.difference_update({station_offset + sell['index'], station_offset + buy['index']})
+                if len(avoid_nodes) == 0:
+                    avoid_nodes = None
                 if use_distance or avoid_nodes is not None:
                     dist_sell_buy = shortest_path_distance(
                         nav_graph,
@@ -698,6 +717,8 @@ for sector in sectors:
 
     if sector.get('owner') in illegal_factions:
         illegal_sectors.add(sectorCode)
+    if sector.get('owner') in hostile_factions:
+        hostile_sectors.add(sectorCode)
 
     updateStatsInfo(stats, sector.get('owner'), "sectors")
 
@@ -839,6 +860,14 @@ if args.avoid_illegal_sectors:
         if station['sector_code'] in illegal_sectors:
             illegal_nodes.add(station_offset + si)
 
+if args.avoid_hostile_sectors:
+    for gidx, gate in enumerate(gates):
+        if gate['sector_code'] in hostile_sectors:
+            hostile_nodes.add(gidx)
+    for si, station in enumerate(stations):
+        if station['sector_code'] in hostile_sectors:
+            hostile_nodes.add(station_offset + si)
+
 
 if args.ownerless:
     updateOwnerless(args.proximity)
@@ -940,7 +969,7 @@ if args.trades is not None:
         if playerCargo is not None:
             cargo_limit = playerCargo if max_cargo is None else min(max_cargo, playerCargo)
         credits = playerMoney
-    deals = getProfitableTrades(limit, max_cargo, use_distance, origin_pos, cargo_limit, credits, args.avoid_illegal_sectors)
+    deals = getProfitableTrades(limit, max_cargo, use_distance, origin_pos, cargo_limit, credits, args.avoid_illegal_sectors, args.avoid_hostile_sectors)
     for d in deals:
         profit_unit = f"${d['profit_per']:,.0f}"
         total_profit = f"${d['total']:,.0f}"
@@ -990,7 +1019,7 @@ if args.shell:
     print("  setLevel(int)                                          # Set information level for print functions")
     print("  update[Ownerless|LockBoxes|DataVaults|ErlkingVaults]() # Update locations for these objects")
     print("  print[Ownerless|LockBoxes|DataVaults|ErlkingVaults]()  # Print these objects information")
-    print("  getProfitableTrades(n[, max_cargo, use_distance, origin, avoid_illegal])   # Return n most profitable trades")
+    print("  getProfitableTrades(n[, max_cargo, use_distance, origin, avoid_illegal, avoid_hostile])   # Return n most profitable trades")
     print("")
     print("  Eg. Display the ownerless ship locations:")
     print("")

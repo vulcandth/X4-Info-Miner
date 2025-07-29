@@ -9,6 +9,8 @@ pip3 install lxml
 
 ## Changes
 
+* 2025-05-07: Ver 1.0.10
+  - Add `--avoid-hostile-sectors` option for trades
 * 2025-05-06: Ver 1.0.9
   - Add `--avoid-illegal-sectors` option for trades
 * 2025-05-05: Ver 1.0.8
@@ -46,7 +48,7 @@ The `x4-save-miner.py` script is used to extract useful information from any sav
 
 Usage:
 ```
-usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-c CODE] [-p] [-w] [-r] [-x] [-k] [-K] [-X XML] [-q] [-i INFO] [-f] [--player] [--distance] [--avoid-illegal-sectors] [-s] savefile
+usage: x4-save-miner.py [-h] [-o] [-l] [-d] [-e] [-c CODE] [-p] [-w] [-r] [-x] [-k] [-K] [-X XML] [-q] [-i INFO] [-f] [--player] [--distance] [--avoid-illegal-sectors] [--avoid-hostile-sectors] [-s] savefile
 
 positional arguments:
   savefile              The savegame you want to analyse
@@ -72,6 +74,7 @@ options:
   --player              Factor the player's ship location, cargo space and credits into trade ranking
   --distance            Rank trades by profit per kilometre
   --avoid-illegal-sectors  Avoid trades through sectors where the ware is illegal
+  --avoid-hostile-sectors  Avoid trades through sectors hostile to the player
   -s, --shell           Starts a python shell to interract with the XML data (read-only)
 ```
 
