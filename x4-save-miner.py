@@ -390,8 +390,6 @@ def distance_from_point_to_station(pos, sector_code, station_idx, avoid_nodes=No
         total = start_dist + d
         if total < best:
             best = total
-    if not math.isfinite(best) and avoid_nodes is None:
-        best = distance_between(pos, station['pos'])
     return best
 
 def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
@@ -440,7 +438,7 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                         avoid_nodes
                     )
                     if not math.isfinite(dist_sell_buy):
-                        if avoid_nodes is not None:
+                        if sell['sector_code'] != buy['sector_code']:
                             continue
                         dist_sell_buy = distance_between(sell['pos'], buy['pos'])
                     origin_sector = playerLocation.get('sector_code') if origin is not None and playerLocation is not None else None
@@ -749,9 +747,10 @@ for sector in sectors:
     sectorName = sector_macros[sectorMacro] if sectorMacro in sector_macros else ""
     sector.set('sector_name', sectorName)
 
-    if sector.get('owner') in illegal_factions:
+    owner = sector.get('owner')
+    if owner and owner in illegal_factions:
         illegal_sectors.add(sectorCode)
-    if sector.get('owner') in hostile_factions:
+    if owner and owner in hostile_factions:
         hostile_sectors.add(sectorCode)
 
     updateStatsInfo(stats, sector.get('owner'), "sectors")

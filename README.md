@@ -80,9 +80,10 @@ options:
 
 `--avoid-hostile-sectors` skips trades if either station is in a hostile sector
 and searches for routes that do not pass through hostile territory from the
-player's current position to the destination.  If no such route exists the trade
-is ignored. `--avoid-illegal-sectors` only avoids illegal sectors on the leg
-from the seller to the buyer.
+player's current position to the destination. Unowned sectors are considered
+neutral, so travelling through them is always allowed. If there is no gate route
+between two stations in different sectors the trade is ignored.  `--avoid-illegal-sectors`
+only avoids illegal sectors on the leg from the seller to the buyer.
 
 Using `--player` with the trades option ranks deals by profit per kilometre and automatically limits them by your ship's cargo space and available credits.
 
