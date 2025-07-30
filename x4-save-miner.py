@@ -513,6 +513,34 @@ def distance_from_point_to_station_variant(pos, sector_code, station_idx, varian
             best = total
     return best
 
+def route_from_point_to_station_variant(pos, sector_code, station_idx, variant):
+    """Return a path from an arbitrary point to a station using variant-specific
+    avoidance rules.
+
+    The returned list contains gate and station node indices. The first element
+    will be a gate in the starting sector when one is required, otherwise the
+    station node itself when travelling within the same sector.
+    """
+
+    station = stations[station_idx]
+    best = distance_between(pos, station['pos']) if sector_code == station['sector_code'] else float('inf')
+    best_route = [station_offset + station_idx] if sector_code == station['sector_code'] else []
+    for gidx in sector_gates.get(sector_code, []):
+        start_dist = distance_between(pos, gates[gidx]['pos'])
+        d = shortest_path_distance_variant(
+            graph=nav_graph,
+            start=gidx,
+            goal=station_offset + station_idx,
+            variant=variant
+        )
+        if not math.isfinite(d):
+            continue
+        total = start_dist + d
+        if total < best:
+            best = total
+            best_route = [gidx] + shortest_path_route_variant(nav_graph, gidx, station_offset + station_idx, variant)
+    return best_route
+
 def distance_from_point_to_station(pos, sector_code, station_idx, avoid_nodes=None):
     """Return the shortest distance from an arbitrary point to a station.
 
@@ -1187,10 +1215,21 @@ if args.trades is not None:
             variant = 'hostile'
         else:
             variant = 'none'
-        # Compute the route between seller and buyer and convert to sector names.
+        # Compute the route between player (if used), seller and buyer.
         start_node = station_offset + d['from']['index']
         goal_node = station_offset + d['to']['index']
-        route_nodes = shortest_path_route_variant(nav_graph, start_node, goal_node, variant)
+        if use_player and origin_pos is not None:
+            player_variant = 'hostile' if args.avoid_hostile_sectors else 'none'
+            player_route = route_from_point_to_station_variant(
+                origin_pos,
+                playerLocation.get('sector_code'),
+                d['from']['index'],
+                player_variant
+            )
+            seller_to_buyer = shortest_path_route_variant(nav_graph, start_node, goal_node, variant)
+            route_nodes = player_route + seller_to_buyer[1:]
+        else:
+            route_nodes = shortest_path_route_variant(nav_graph, start_node, goal_node, variant)
         route_names = route_to_sector_names(route_nodes)
         route_str = " -> ".join(route_names)
         # Build multi-line output
