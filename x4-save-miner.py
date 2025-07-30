@@ -108,6 +108,7 @@ illegal_nodes = set()
 hostile_factions = set()
 hostile_sectors = set()
 hostile_nodes = set()
+player_relations = {}
 
 if len(sys.argv) < 3:
     parser.print_usage()
@@ -161,10 +162,12 @@ player_info = root.find('./info/player')
 if player_info is not None and 'money' in player_info.attrib:
     playerMoney = int(player_info.get('money'))
 
-# Determine which factions are hostile to the player
+# Determine the player's relations with all factions and which are hostile
 for rel in root.findall(".//faction[@id='player']/relations/relation"):
     try:
-        if float(rel.get('relation', '0')) < -0.25:
+        val = float(rel.get('relation', '0'))
+        player_relations[rel.get('faction')] = val
+        if val < -0.25:
             hostile_factions.add(rel.get('faction'))
     except ValueError:
         pass
@@ -577,6 +580,13 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
             continue
         for sell in sellers:
             for buy in buyers:
+                # Skip trades that are not available to the player
+                if sell.get('virtual') or buy.get('virtual'):
+                    continue
+                if player_relations.get(sell.get('owner', ''), 0) < 0:
+                    continue
+                if player_relations.get(buy.get('owner', ''), 0) < 0:
+                    continue
                 is_illegal_trade = sell.get('illegal') or buy.get('illegal')
                 # Select which avoidance variant to use based on flags.
                 if avoid_hostile and avoid_illegal and is_illegal_trade:
@@ -1016,7 +1026,10 @@ for sector in sectors:
                 ware = t.get('ware')
                 price = float(t.get('price', '0'))
                 amount = int(t.get('amount', '0'))
-                illegal = 'shady' in t.get('flags', '')
+                flags = set(t.get('flags', '').split('|')) if 'flags' in t.attrib else set()
+                illegal = 'shady' in flags
+                virtual = any(f in flags for f in ['buyermoneyvirtual', 'sellermoneyvirtual',
+                                                  'buyercargovirtual', 'sellercargovirtual'])
                 info = {
                     'station': myCode if myCode else '',
                     'sector_name': sectorName,
@@ -1025,7 +1038,10 @@ for sector in sectors:
                     'amount': amount,
                     'pos': station_pos,
                     'index': station_index,
-                    'illegal': illegal
+                    'illegal': illegal,
+                    'owner': resource.get('owner'),
+                    'flags': flags,
+                    'virtual': virtual
                 }
                 if 'seller' in t.attrib:
                     trade_sellers.setdefault(ware, []).append(info)
