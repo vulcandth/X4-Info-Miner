@@ -303,7 +303,10 @@ def build_navigation_graph():
     graph = defaultdict(list)
     path_cache = {}
     gate_index_by_id = {g.get('id'): i for i, g in enumerate(gates) if g.get('id')}
-    # connect gates that share the same shcon (instant travel)
+    # connect gates that share the same shcon within the same cluster
+    # (instant travel).  The cluster prefix avoids linking unrelated
+    # gates that coincidentally use the same shcon number in different
+    # clusters.
     for group in gate_groups.values():
         for i in group:
             for j in group:
@@ -939,9 +942,10 @@ for sector in sectors:
             gates.append({'sector_code': sectorCode, 'pos': gate_pos, 'macro': macro})
             idx = len(gates) - 1
             sector_gates[sectorCode].append(idx)
-            m = re.search(r'shcon(\d+)_gatezone_macro$', macro)
+            m = re.search(r'cluster_(\d+).*shcon(\d+)_gatezone_macro$', macro)
             if m:
-                gate_groups[m.group(1)].append(idx)
+                key = f"{m.group(1)}_{m.group(2)}"
+                gate_groups[key].append(idx)
 
     resources = sector.findall("./connections/connection/component/connections/connection/component")
     for resource in resources:
