@@ -169,6 +169,61 @@ def nameSectors( xmlstrings, names):
                     print("Warning: Found dataset without identification: " + str(name))
     return sectorNames
 
+# -----------------------------------------------------------------------------
+# Process ware volume information from library XML.
+def processWares(xmlstrings):
+    wareVolumes = {}
+    for rawxml in xmlstrings:
+        if rawxml['name'] == 'libraries/wares.xml':
+            print("Processing wares xml in: " + rawxml['name'])
+            root = etree.fromstring(bytes(rawxml['content'], encoding='utf8'))
+            for ware in root.findall('.//ware[@id]'):
+                wid = ware.get('id')
+                vol = ware.get('volume')
+                if wid is not None and vol is not None:
+                    wareVolumes[wid] = int(vol)
+    return wareVolumes
+
+# -----------------------------------------------------------------------------
+# Process basket definitions to compute container capacities from ware volumes.
+def processBaskets(xmlstrings, wareVolumes):
+    basketVolumes = {}
+    for rawxml in xmlstrings:
+        if rawxml['name'] == 'libraries/baskets.xml':
+            print("Processing baskets xml in: " + rawxml['name'])
+            root = etree.fromstring(bytes(rawxml['content'], encoding='utf8'))
+            for basket in root.findall('.//basket[@id]'):
+                bid = basket.get('id')
+                total = 0
+                for ware in basket.findall('.//ware'):
+                    wid = ware.get('ware')
+                    if wid in wareVolumes:
+                        total += wareVolumes[wid]
+                    else:
+                        print(f"Warning: unknown ware '{wid}' in basket '{bid}'")
+                basketVolumes[bid] = total
+    return basketVolumes
+
+# -----------------------------------------------------------------------------
+# Process ship cargo hold capacities by reading basket capacity attributes.
+def processShips(xmlstrings, basketVolumes):
+    shipHolds = {}
+    for rawxml in xmlstrings:
+        if rawxml['name'] == 'libraries/ships.xml':
+            print("Processing ships xml in: " + rawxml['name'])
+            root = etree.fromstring(bytes(rawxml['content'], encoding='utf8'))
+            for ship in root.findall('.//ship[@id]'):
+                sid = ship.get('id')
+                basket = ship.find('.//basket')
+                if basket is not None:
+                    hold_id = basket.get('basket')
+                    cap = basketVolumes.get(hold_id)
+                    if cap is not None:
+                        shipHolds[sid] = cap
+                    else:
+                        print(f"Warning: No capacity for hold id '{hold_id}' for ship '{sid}'")
+    return shipHolds
+
 offsets = {}
 names = {}
 sectorNames = {}
@@ -194,3 +249,19 @@ with open("x4-offsets.json", "w", encoding='utf-8') as jsonfile:
 
 with open("x4-names.json", "w", encoding='utf-8') as jsonfile:
     jsonfile.write( json.dumps(sectorNames, indent=3, ensure_ascii=False) )
+
+# Process ware volumes and ship cargo hold sizes from base and DLC libraries
+dataFiles = [ join(args.x4folder, '08.cat') ] + glob.glob(args.x4folder + "/extensions/*/ext_03.cat")
+xmlstrings = []
+for file in dataFiles:
+    xmlstrings += fetchXmlwithCat(args.x4folder, file)
+# Compute ware and basket volumes and ship hold capacities
+wareVolumes  = processWares(xmlstrings)
+basketVolumes = processBaskets(xmlstrings, wareVolumes)
+shipHolds     = processShips(xmlstrings, basketVolumes)
+
+with open("x4-wares.json", "w", encoding='utf-8') as jsonfile:
+    jsonfile.write( json.dumps(wareVolumes, indent=3, ensure_ascii=False) )
+
+with open("x4-ship-holds.json", "w", encoding='utf-8') as jsonfile:
+    jsonfile.write( json.dumps(shipHolds, indent=3, ensure_ascii=False) )
