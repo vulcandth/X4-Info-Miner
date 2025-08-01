@@ -30,7 +30,7 @@ import gzip
 import sys
 import argparse
 from os import listdir
-from os.path import isfile, join
+from os.path import isfile, isdir, join
 import json
 import re
 import glob
@@ -224,6 +224,31 @@ def processShips(xmlstrings, basketVolumes):
                         print(f"Warning: No capacity for hold id '{hold_id}' for ship '{sid}'")
     return shipHolds
 
+# -----------------------------------------------------------------------------
+# Process storage macros to extract ship holds (cargo max) directly from storage macros
+def processStorageMacros(xmlstrings):
+    """
+    Extract cargo hold capacities from <macro class="storage"> entries via <cargo max="..."/>.
+    """
+    storage = {}
+    for rawxml in xmlstrings:
+        name = rawxml.get('name', '')
+        if '/macros/' not in name:
+            continue
+        try:
+            root = etree.fromstring(bytes(rawxml['content'], encoding='utf8'))
+        except Exception:
+            continue
+        for macro in root.findall('.//macro[@class="storage"]'):
+            mid = macro.get('name')
+            cargo = macro.find('.//cargo')
+            if mid and cargo is not None and cargo.get('max'):
+                try:
+                    storage[mid] = int(cargo.get('max'))
+                except ValueError:
+                    pass
+    return storage
+
 offsets = {}
 names = {}
 sectorNames = {}
@@ -255,13 +280,25 @@ dataFiles = [ join(args.x4folder, '08.cat') ] + glob.glob(args.x4folder + "/exte
 xmlstrings = []
 for file in dataFiles:
     xmlstrings += fetchXmlwithCat(args.x4folder, file)
-# Compute ware and basket volumes and ship hold capacities
-wareVolumes  = processWares(xmlstrings)
+# Compute ware and basket volumes and default ship hold capacities from libraries
+wareVolumes   = processWares(xmlstrings)
 basketVolumes = processBaskets(xmlstrings, wareVolumes)
 shipHolds     = processShips(xmlstrings, basketVolumes)
 
+# Gather macro definitions (storage macros) to override/add exact cargo hold sizes
+macroCats = [f for f in listdir(args.x4folder) if f.lower().endswith('.cat')]
+macroFiles = [ join(args.x4folder, fn) for fn in macroCats ]
+extdir = join(args.x4folder, 'extensions')
+if isdir(extdir):
+    macroFiles += glob.glob(extdir + '/*/ext_01.cat')
+for file in macroFiles:
+    xmlstrings += fetchXmlwithCat(args.x4folder, file)
+macroHolds = processStorageMacros(xmlstrings)
+# Override library holds with storage macro maxima
+shipHolds.update(macroHolds)
+
 with open("x4-wares.json", "w", encoding='utf-8') as jsonfile:
-    jsonfile.write( json.dumps(wareVolumes, indent=3, ensure_ascii=False) )
+    jsonfile.write(json.dumps(wareVolumes,   indent=3, ensure_ascii=False))
 
 with open("x4-ship-holds.json", "w", encoding='utf-8') as jsonfile:
-    jsonfile.write( json.dumps(shipHolds, indent=3, ensure_ascii=False) )
+    jsonfile.write(json.dumps(shipHolds,     indent=3, ensure_ascii=False))

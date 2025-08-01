@@ -324,5 +324,20 @@ The langid is the language id for the name mappings. The default is `44` which I
 
 It will generate two json files `x4-names.json` which maps the cluster/sector/zone macros to their system names, and `x4-offsets.json` which maps the macros to their three dimensional offsets. Both of these files will then be used by the `x4-save-miner` script to provide useful information from your save files.
 
+## scan_x4_archives.py
+
+A supplemental utility to scan the game's CAT/DAT archives for specific numeric values inside XML files.
+
+**Requirements:** Python 3, `lxml`, and optionally `python-lz4` to handle LZ4-compressed entries.
+
+**Usage:**
+```bash
+pip install lxml         # if not already installed
+pip install lz4          # optional, for LZ4 compression support
+
+python3 scan_x4_archives.py [--debug] /path/to/X4\ Foundations
+```
+
+The `--debug` flag prints the first 200 characters of each XML entry as read from the DAT archive, useful for verifying decompression.
 
 
