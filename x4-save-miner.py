@@ -90,8 +90,12 @@ sector_macros = {}
 stats = {}
 phq = None
 playerLocation = None
-playerMoney = 0
 playerCargo = None
+playerCargoType = None
+playerInShip = False
+playerCredits = 0
+ware_volumes = {}
+ship_hold_sizes = {}
 trade_buyers = {}
 trade_sellers = {}
 gates = []
@@ -139,6 +143,12 @@ with open("x4-names.json", "r") as jsonfile:
     input = jsonfile.read()
     sector_macros = json.loads(input)
 
+with open("x4-wares.json", "r") as jsonfile:
+    ware_volumes = json.load(jsonfile)
+
+with open("x4-ship-holds.json", "r") as jsonfile:
+    ship_hold_sizes = json.load(jsonfile)
+
 # Create a custom parser with optimized settings
 def create_optimized_parser():
     # Create a parser that's optimized for speed
@@ -158,9 +168,15 @@ start = time.time()
 root = etree.fromstring(rawxml, parser=OPTIMIZED_PARSER)
 print('Done. Time: %.2f' % (time.time() - start))
 
-player_info = root.find('./info/player')
-if player_info is not None and 'money' in player_info.attrib:
-    playerMoney = int(player_info.get('money'))
+
+# Record player credit balance
+player_info = root.find('.//player')
+if player_info is not None:
+    try:
+        playerCredits = int(player_info.get('money', '0'))
+    except ValueError:
+        playerCredits = 0
+
 
 # Determine the player's relations with all factions and which are hostile
 for rel in root.findall(".//faction[@id='player']/relations/relation"):
@@ -600,13 +616,14 @@ def getProfitableTrades(limit=5, max_cargo=None, use_distance=False,
                 if buy['price'] <= sell['price'] or sell['amount'] == 0 or buy['amount'] == 0:
                     continue
                 qty = min(sell['amount'], buy['amount'])
+                volume = ware_volumes.get(ware, 1)
                 if max_cargo is not None:
-                    qty = min(qty, max_cargo)
+                    qty = min(qty, max_cargo // volume)
                 if cargo_limit is not None:
-                    qty = min(qty, cargo_limit)
+                    qty = min(qty, cargo_limit // volume)
                 if credits is not None and sell['price'] > 0:
                     qty = min(qty, int(credits // sell['price']))
-                if qty == 0:
+                if qty <= 0:
                     continue
                 profit_per = buy['price'] - sell['price']
                 total = profit_per * qty
@@ -979,15 +996,26 @@ for sector in sectors:
                 allCodes[myCode] = resource
         
         player = resource.findall(".//component[@class='player']")
-        if player != None and len(player) > 0:
+        if player is not None and len(player) > 0:
             playerLocation = resource
-            storage = resource.find(".//component[@class='storage']")
-            if storage is not None:
-                if 'capacity' in storage.attrib:
-                    try:
-                        playerCargo = int(float(storage.get('capacity')))
-                    except ValueError:
-                        pass
+            if not playerInShip and resource.get('class', '').startswith('ship'):
+                playerInShip = True
+                hold = None
+                for storage in resource.findall(".//component[@class='storage']"):
+                    macro = storage.get('macro')
+                    if macro in ship_hold_sizes:
+                        hold = macro
+                        break
+                if hold is not None:
+                    playerCargo = ship_hold_sizes.get(hold)
+                    if 'container' in hold:
+                        playerCargoType = 'container'
+                    elif 'liquid' in hold:
+                        playerCargoType = 'liquid'
+                    elif 'solid' in hold:
+                        playerCargoType = 'solid'
+                    elif 'universal' in hold:
+                        playerCargoType = 'universal'
 
         if resource.get('class') == 'gate':
             gate_pos = getPosition(resource)
@@ -1024,7 +1052,7 @@ for sector in sectors:
             trades = resource.findall('.//trade/offers//trade')
             for t in trades:
                 ware = t.get('ware')
-                price = float(t.get('price', '0'))
+                price = float(t.get('price', '0')) / 100.0
                 amount = int(t.get('amount', '0'))
                 flags = set(t.get('flags', '').split('|')) if 'flags' in t.attrib else set()
                 illegal = 'shady' in flags
@@ -1214,13 +1242,17 @@ if args.trades is not None:
     print("=================")
     origin_pos = None
     cargo_limit = max_cargo
-    credits = None
     use_distance = args.distance or use_player
-    if use_player and playerLocation is not None:
+    if use_player:
+        if not playerInShip or playerLocation is None:
+            print("ERROR: Player is not currently in a ship; cannot use --player option.")
+            sys.exit(1)
         origin_pos = getPosition(playerLocation)
-        if playerCargo is not None:
-            cargo_limit = playerCargo if max_cargo is None else min(max_cargo, playerCargo)
-        credits = playerMoney
+        if playerCargo is None:
+            print("ERROR: Unable to determine player's cargo hold size.")
+            sys.exit(1)
+        cargo_limit = playerCargo if max_cargo is None else min(max_cargo, playerCargo)
+    credits = playerCredits if use_player else None
     deals = getProfitableTrades(limit, max_cargo, use_distance, origin_pos, cargo_limit, credits, args.avoid_illegal_sectors, args.avoid_hostile_sectors)
     for d in deals:
         profit_unit = f"${d['profit_per']:,.0f}"

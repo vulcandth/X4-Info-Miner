@@ -70,8 +70,8 @@ options:
   -q, --quiet           Suppress warnings in interactive mode
   -i INFO, --info INFO  information level [1-3]. Default is 1 (sector only)
   -f, --factions        Display faction relative strengths
-  -t [N] [C], --trades [N] [C]  Show the top N profitable ware trades using at most C cargo (default N=5)
-  --player              Factor the player's ship location, cargo space and credits into trade ranking
+  -t [N] [C], --trades [N] [C]  Show the top N profitable ware trades using at most C cargo volume (default N=5)
+  --player              Factor the player's ship location, cargo space, and credits into trade ranking
   --distance            Rank trades by profit per kilometre
   --avoid-illegal-sectors  Avoid trades through sectors where the ware is illegal
   --avoid-hostile-sectors  Avoid trades through sectors hostile to the player
@@ -85,7 +85,7 @@ neutral, so travelling through them is always allowed. If there is no gate route
 between two stations in different sectors the trade is ignored.  `--avoid-illegal-sectors`
 only avoids illegal sectors on the leg from the seller to the buyer.
 
-Using `--player` with the trades option ranks deals by profit per kilometre and automatically limits them by your ship's cargo space and available credits.
+Using `--player` with the trades option ranks deals by profit per kilometre and automatically limits them by your ship's cargo space and available credits. Cargo limits are derived from the player's current ship hold type and ware volume.
 
 The savefile can be compressed or uncompressed. It is the importing of the data that takes most of the time, once imported accessing the data is fast.
 
